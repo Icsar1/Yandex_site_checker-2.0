@@ -74,8 +74,20 @@ YANDEX_METRICA_TOKEN=
 TOPVISOR_API_KEY=
 ```
 
+
+### Webhook для Tilda
+
+Если форма в Tilda отправляет вебхук, можно использовать отдельный endpoint:
+
+`POST /webhook/tilda`
+
+Поддерживаются `application/json`, `application/x-www-form-urlencoded` и `multipart/form-data` payload-ы.
+Обязательные поля: `name`, `phone`, `email`, `site_url` (для сайта также принимаются `site`, `website`, `url`).
+При невалидных или неполных данных endpoint возвращает `422`.
+
 ## API
 
 - `GET /health` — проверка, что сервис жив.
 - `POST /lead/seo` — создать SEO-отчет.
+- `POST /webhook/tilda` — принять вебхук из Tilda и создать SEO-отчет.
 - `GET /r/{report_id}` — страница отчета.
