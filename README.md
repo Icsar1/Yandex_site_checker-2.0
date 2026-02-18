@@ -92,7 +92,13 @@ curl -X POST http://localhost:8000/generate \
   -o media_plan_wordstat.pdf
 ```
 
-## Production: gunicorn + nginx + systemd
+## Production: варианты деплоя (без nginx и с nginx)
+
+
+### Когда nginx не нужен
+Для небольшого приложения nginx не обязателен. Можно запустить только `gunicorn` (или `uvicorn`) и открыть порт сервера напрямую.
+
+Это нормально для простого VPS-сценария, если вам не нужны дополнительные возможности reverse proxy.
 
 ### 1) gunicorn
 
@@ -105,7 +111,7 @@ gunicorn app.main:app \
   -w 2
 ```
 
-### 2) nginx (reverse proxy)
+### 2) nginx (опционально, как reverse proxy)
 Пример server-блока:
 
 ```nginx
@@ -126,7 +132,7 @@ server {
 }
 ```
 
-> Для webhook Tilda **обязательно HTTPS**, поэтому нужен валидный TLS-сертификат.
+> Для webhook Tilda **обязательно HTTPS**. HTTPS можно обеспечить как через nginx + сертификат, так и через любой другой TLS-терминатор (например, Caddy или Cloudflare Tunnel).
 
 ### 3) systemd unit
 `/etc/systemd/system/wordstat-planner.service`:
