@@ -54,3 +54,22 @@ def test_successful_pdf_generation(client: TestClient, monkeypatch: pytest.Monke
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
+
+
+def test_tilda_webhook_test_payload_form(client: TestClient) -> None:
+    response = client.post(
+        "/webhook/tilda",
+        data={"test": "test"},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 200
+    assert response.text == "ok"
+
+
+def test_tilda_webhook_json_payload(client: TestClient) -> None:
+    response = client.post(
+        "/webhook/tilda",
+        json={"Name": "Иван", "Email": "test@email.com", "tranid": "123:456", "formid": "form42"},
+    )
+    assert response.status_code == 200
+    assert response.text == "ok"

@@ -60,19 +60,35 @@ black --check .
 ## Webhook для Tilda
 Endpoint: `POST /webhook/tilda`
 
-Требования реализованы:
+Реализовано с учетом требований Tilda:
 - принимает `application/x-www-form-urlencoded` и `application/json`;
-- `test=test` возвращает `200 OK` и тело `ok`;
-- отвечает быстро (обработчик без тяжелых операций).
+- сразу после подключения Tilda отправляет `test=test` (POST), обработчик возвращает `200 OK` и тело `ok`;
+- обработчик легковесный и отвечает быстро (в пределах 5 секунд);
+- поддерживается HTTPS-требование на уровне инфраструктуры (TLS-терминация);
+- Tilda при недоступности webhook может делать повторные попытки отправки (по документации: еще 2 попытки с интервалом около минуты).
+
+Что обычно приходит от Tilda в payload:
+- поля формы (`Name`, `Email`, `Phone` и т.д., либо кастомные имена);
+- служебные поля вроде `tranid` (ID заявки) и `formid` (ID блока);
+- опционально `COOKIES`, если включена передача cookie в настройках Tilda;
+- опционально API-ключ (если настроен в Tilda) — в POST-поле или заголовке.
 
 ### Проверка webhook (curl)
 
-Form-urlencoded:
+Form-urlencoded (проверка test-хука):
 
 ```bash
 curl -X POST http://localhost:8000/webhook/tilda \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "test=test"
+```
+
+Form-urlencoded (пример payload заявки):
+
+```bash
+curl -X POST http://localhost:8000/webhook/tilda \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "Name=Иван&Email=test%40email.com&Phone=0123456789&tranid=467251:8442970&formid=form48844953"
 ```
 
 JSON:

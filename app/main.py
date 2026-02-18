@@ -95,7 +95,12 @@ async def tilda_webhook(request: Request) -> PlainTextResponse:
     if payload.get("test") == "test":
         return PlainTextResponse("ok", status_code=200)
 
-    logger.info("Tilda webhook received keys=%s", list(payload.keys()))
+    logger.info(
+        "Tilda webhook received: keys=%s referer=%s content_type=%s",
+        list(payload.keys()),
+        request.headers.get("referer", "-"),
+        content_type or "-",
+    )
     return PlainTextResponse("ok", status_code=200)
 
 
