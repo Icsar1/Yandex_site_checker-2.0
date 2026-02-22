@@ -35,7 +35,7 @@ pdf_export_service = PDFExportService()
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("index.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "index.html", {"error": None})
 
 
 @app.post("/generate", response_class=Response)
@@ -58,8 +58,9 @@ async def generate_media_plan(
         pdf_bytes = pdf_export_service.generate(plan)
     except ValueError as exc:
         return templates.TemplateResponse(
+            request,
             "index.html",
-            {"request": request, "error": f"Ошибка валидации: {exc}"},
+            {"error": f"Ошибка валидации: {exc}"},
             status_code=400,
         )
     except WordstatAuthError as exc:
@@ -85,7 +86,9 @@ async def tilda_webhook(request: Request) -> PlainTextResponse:
 
     try:
         if "application/json" in content_type:
-            payload = await request.json()
+            json_payload = await request.json()
+            if isinstance(json_payload, dict):
+                payload = json_payload
         else:
             form_data = await request.form()
             payload = dict(form_data)
@@ -106,7 +109,8 @@ async def tilda_webhook(request: Request) -> PlainTextResponse:
 
 def _render_error(request: Request, message: str, status_code: int) -> HTMLResponse:
     return templates.TemplateResponse(
+        request,
         "index.html",
-        {"request": request, "error": message},
+        {"error": message},
         status_code=status_code,
     )
