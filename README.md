@@ -32,6 +32,33 @@ curl -i http://127.0.0.1:8000/
 tail -n 80 /tmp/app.log
 ```
 
+## Ошибка при `git commit` и `git push origin work`
+Если видите ошибки `Author identity unknown` и `src refspec work does not match any`, выполните:
+
+```bash
+cd /root/tmp_sk/yandex_site_checker
+
+# 1) Один раз настроить имя и email для git на сервере
+git config --global user.name "Ваше Имя"
+git config --global user.email "you@example.com"
+
+# 2) Убедиться, что вы на ветке work (или создать её)
+git checkout -B work
+
+# 3) Закоммитить
+git add .
+git commit -m "merge: resolve conflicts with main"
+
+# 4) Первый push ветки work на origin
+git push -u origin work
+```
+
+Если `work` не нужна, можно пушить текущую ветку так:
+
+```bash
+git push -u origin HEAD
+```
+
 ## Если приходит 404 на `/`
 Обычно это значит, что на порту `8000` запущен другой процесс.
 
