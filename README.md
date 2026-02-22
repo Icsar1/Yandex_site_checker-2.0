@@ -44,15 +44,14 @@ nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
 curl -i http://127.0.0.1:8000/
 ```
 
-## Если в файлах появились `<<<<<<<`, `=======`, `>>>>>>>`
-Это метки Git-конфликта после неудачного merge.
+## Если в файлах появились маркеры конфликта Git
+Это следы неудачного merge. Быстрое восстановление:
 
 ```bash
 cd /root/tmp_sk/yandex_site_checker
 git reset --hard HEAD
 git clean -fd
 git pull --ff-only
-rg -n "<<<<<<<|=======|>>>>>>>" || echo "ok: conflict markers not found"
 ```
 
 
