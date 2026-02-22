@@ -83,6 +83,21 @@ curl -X POST http://127.0.0.1:8000/webhook/tilda \
   -d "test=test"
 ```
 
+
+## Что делать прямо сейчас (чтобы Tilda заработала)
+1. Поднимите сервер и не закрывайте процесс (или запустите через `nohup`).
+2. Убедитесь, что сайт доступен по HTTPS-домену (Tilda не отправляет webhook на HTTP).
+3. В Tilda откройте: **Настройки сайта → Формы → Webhook**.
+4. Вставьте URL:
+   - `https://ВАШ_ДОМЕН/webhook/tilda`
+5. Нажмите «Сохранить» — Tilda сразу отправит `test=test`.
+6. Успех = сервер вернул `200` и тело `ok`.
+
+Быстрая проверка с Windows PowerShell:
+```powershell
+curl.exe -X POST https://ВАШ_ДОМЕН/webhook/tilda -d "test=test"
+```
+
 ## ENV переменные
 - `WORDSTAT_OAUTH_TOKEN` (обязательно)
 - `WORDSTAT_BASE_URL` (по умолчанию `https://api.wordstat.yandex.net`)
