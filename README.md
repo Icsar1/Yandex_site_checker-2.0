@@ -61,6 +61,49 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 Откройте: `http://localhost:8000`
 
+## Быстро и просто: запуск на VPS (по шагам)
+
+Ниже максимально короткий набор команд, без лишней теории.
+
+1. Перейти в проект:
+
+```bash
+cd /root/tmp_sk/yandex_site_checker
+```
+
+2. Создать окружение:
+
+```bash
+python3 -m venv --copies .venv
+```
+
+3. Установить зависимости:
+
+```bash
+. .venv/bin/activate
+pip install -r requirements.txt
+```
+
+4. Создать файл настроек:
+
+```bash
+cp .env.example .env
+```
+
+5. Запустить сервер:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+6. Проверить, что всё работает:
+
+```bash
+curl -i http://127.0.0.1:8000/
+```
+
+Если увидите `HTTP/1.1 200 OK` — всё запущено правильно.
+
 ## Запуск тестов и линтеров
 
 ```bash
