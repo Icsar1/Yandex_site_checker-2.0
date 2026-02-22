@@ -27,6 +27,44 @@ curl -i http://127.0.0.1:8000/
 ```
 Если `HTTP/1.1 200 OK` — всё работает.
 
+## Если на сервере только ОДНА консоль
+
+Это нормальная ситуация. Делайте так:
+
+1) Запуск в фоне (чтобы консоль не занималась):
+
+```bash
+cd /root/tmp_sk/yandex_site_checker
+. .venv/bin/activate
+nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
+```
+
+2) Проверка в этой же консоли:
+
+```bash
+curl -i http://127.0.0.1:8000/
+```
+
+3) Если не отвечает, смотрите лог:
+
+```bash
+tail -n 80 /tmp/app.log
+```
+
+Останавливать процесс при необходимости:
+
+```bash
+pkill -f "uvicorn app.main:app"
+```
+
+## Проверка с Windows PowerShell
+
+В PowerShell команда `curl` — это не Linux curl. Используйте `curl.exe`:
+
+```powershell
+curl.exe -i http://45.8.98.114:8000/
+```
+
 ## Что умеет
 - Форма на `/` (ниша, регион, бюджет, цель).
 - Генерация PDF на `/generate`.
