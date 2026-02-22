@@ -1,8 +1,8 @@
 # Wordstat Media Planner
- codex/create-web-app-for-media-plan-using-yandex-api-isv5zt
-Коротко: это FastAPI-приложение, которое строит медиаплан **только** по данным Wordstat API.
 
-## Быстрый старт (5 команд)
+FastAPI-приложение для медиаплана **только по данным Wordstat API**.
+
+## Быстрый запуск (одна серверная консоль)
 ```bash
 cd /root/tmp_sk/yandex_site_checker
 python3 -m venv --copies .venv
@@ -11,164 +11,92 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Откройте `.env` и впишите токен:
+Откройте `.env` и заполните минимум:
 ```env
 WORDSTAT_OAUTH_TOKEN=ваш_токен
 ```
 
-Запуск:
+Запуск в фоне (чтобы эта же консоль осталась для проверок):
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-Проверка:
-```bash
-curl -i http://127.0.0.1:8000/
-```
-Если `HTTP/1.1 200 OK` — всё работает.
-
-## Если на сервере только ОДНА консоль
-
-Это нормальная ситуация. Делайте так:
-
-1) Запуск в фоне (чтобы консоль не занималась):
-
-```bash
-cd /root/tmp_sk/yandex_site_checker
-. .venv/bin/activate
 nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
 ```
 
-2) Проверка в этой же консоли:
-
+Проверка в этой же консоли:
 ```bash
 curl -i http://127.0.0.1:8000/
 ```
 
-3) Если не отвечает, смотрите лог:
+Ожидается `HTTP/1.1 200 OK`.
 
+Если не `200`:
 ```bash
 tail -n 80 /tmp/app.log
 ```
 
-Останавливать процесс при необходимости:
-
-```bash
-pkill -f "uvicorn app.main:app"
-```
-
-## Проверка с Windows PowerShell
-
-В PowerShell команда `curl` — это не Linux curl. Используйте `curl.exe`:
-
-```powershell
-curl.exe -i http://45.8.98.114:8000/
-```
-
-
-## Если на `127.0.0.1:8000` приходит `404 Not Found`
-
-## Если видите в файлах `<<<<<<<`, `=======`, `>>>>>>>`
-Это не "мои символы" и не код приложения. Это метки **Git-конфликта** после неудачного merge.
-
-Как быстро починить:
+## Ошибка при `git commit` и `git push origin work`
+Если видите ошибки `Author identity unknown` и `src refspec work does not match any`, выполните:
 
 ```bash
 cd /root/tmp_sk/yandex_site_checker
-git status
+
+# 1) Один раз настроить имя и email для git на сервере
+git config --global user.name "Ваше Имя"
+git config --global user.email "you@example.com"
+
+# 2) Убедиться, что вы на ветке work (или создать её)
+git checkout -B work
+
+# 3) Закоммитить
+git add .
+git commit -m "merge: resolve conflicts with main"
+
+# 4) Первый push ветки work на origin
+git push -u origin work
+```
+
+Если `work` не нужна, можно пушить текущую ветку так:
+
+```bash
+git push -u origin HEAD
+```
+
+## Если приходит 404 на `/`
+Обычно это значит, что на порту `8000` запущен другой процесс.
+
+```bash
+ss -lntp | grep :8000
+pkill -f "uvicorn app.main:app" || true
+cd /root/tmp_sk/yandex_site_checker
+. .venv/bin/activate
+nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
+curl -i http://127.0.0.1:8000/
+```
+
+## Если в файлах появились маркеры конфликта Git
+Это следы неудачного merge. Быстрое восстановление:
+
+```bash
+cd /root/tmp_sk/yandex_site_checker
 git reset --hard HEAD
 git clean -fd
 git pull --ff-only
 ```
 
-Проверка, что меток больше нет:
+## Быстрый фикс 404 (одной командой)
+Если на `http://127.0.0.1:8000/` получаете `{"detail":"Not Found"}`, запустите:
 
 ```bash
-rg -n "<<<<<<<|=======|>>>>>>>" || echo "ok: conflict markers not found"
+bash scripts/recover_404.sh
 ```
 
-Дальше снова запускайте приложение как обычно.
-
-Это значит, что на порту 8000 уже висит **чужой процесс**, а не это приложение.
-
-Сделайте так (в этой же консоли):
-
-```bash
-ss -lntp | grep :8000
-pkill -f "uvicorn app.main:app"
-cd /root/tmp_sk/yandex_site_checker
-. .venv/bin/activate
-nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
-curl -i http://127.0.0.1:8000/
-```
-
-Если снова не 200 — покажите лог:
-
-```bash
-tail -n 80 /tmp/app.log
-```
-
-## Что умеет
-- Форма на `/` (ниша, регион, бюджет, цель).
-- Генерация PDF на `/generate`.
-- Webhook Tilda `POST /webhook/tilda`.
-- Понятные ошибки на русском, если Wordstat недоступен.
-
-## Webhook Tilda (минимум)
-- Поддерживает `application/x-www-form-urlencoded` и `application/json`.
-- `test=test` возвращает `200` и `ok`.
-- Для продакшена нужен HTTPS.
-
-Проверка:
-```bash
-curl -X POST http://127.0.0.1:8000/webhook/tilda \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "test=test"
-```
-
-
-## Что делать прямо сейчас (чтобы Tilda заработала)
-1. Поднимите сервер и не закрывайте процесс (или запустите через `nohup`).
-2. Убедитесь, что сайт доступен по HTTPS-домену (Tilda не отправляет webhook на HTTP).
-3. В Tilda откройте: **Настройки сайта → Формы → Webhook**.
-4. Вставьте URL:
-   - `https://ВАШ_ДОМЕН/webhook/tilda`
-5. Нажмите «Сохранить» — Tilda сразу отправит `test=test`.
-6. Успех = сервер вернул `200` и тело `ok`.
-
-Быстрая проверка с Windows PowerShell:
-```powershell
-curl.exe -X POST https://ВАШ_ДОМЕН/webhook/tilda -d "test=test"
-```
-
-## ENV переменные
-- `WORDSTAT_OAUTH_TOKEN` (обязательно)
-- `WORDSTAT_BASE_URL` (по умолчанию `https://api.wordstat.yandex.net`)
-- `WORDSTAT_TIMEOUT_SECONDS` (по умолчанию `10`)
-- `REQUEST_LOG_LEVEL` (по умолчанию `INFO`)
-- `DEBUG` (`true/false`)
-
-## Важно
-- Никаких fallback-данных: только ответ Wordstat API.
-- При ошибках API пользователь получает понятное сообщение.
-=======
-Веб-приложение на FastAPI для формирования медиаплана **только на базе Яндекс Wordstat API**.
-
-## Возможности
-- Форма ввода ниши, региона, бюджета и цели кампании.
-- Получение ключевых фраз и частотностей через Wordstat API.
-- Расчет сводных метрик:
-  - общее число ключей;
-  - суммарная частотность;
-  - средняя частотность;
-  - распределение бюджета по приоритетам (при наличии бюджета).
-- Экспорт отчета в PDF (ReportLab).
-- Webhook для Tilda: `POST /webhook/tilda`.
-- Явная обработка ошибок API без моков/фолбэков в прод-логике.
+Скрипт:
+- гасит процесс на порту `8000`;
+- поднимает **именно этот** проект через `python -m uvicorn --app-dir ... app.main:app`;
+- сразу печатает HTTP-статус и хвост лога.
 
 ## Структура проекта
 
-```text
+```
 app/main.py
 app/services/wordstat_client.py
 app/services/media_plan.py
@@ -179,8 +107,10 @@ tests/test_app.py
 ```
 
 ## Переменные окружения
+
 Создайте `.env` на основе `.env.example`:
 
+- `WORDSTAT_OAUTH_TOKEN` — OAuth-токен (обязательно).
 - `WORDSTAT_API_KEY` — API-ключ (обязательно).
 - `WORDSTAT_BASE_URL` — базовый URL API.
 - `WORDSTAT_ENDPOINT` — endpoint Wordstat.
@@ -188,14 +118,67 @@ tests/test_app.py
 - `REQUEST_LOG_LEVEL` — уровень логирования.
 - `DEBUG` — режим отладки.
 
+## Webhook Tilda
+Endpoint:
+- `POST /webhook/tilda`
+
+Поведение:
+- `test=test` → `200 OK` и тело `ok`.
+- Поддерживает `application/x-www-form-urlencoded` и `application/json`.
+- Для Tilda обязателен HTTPS URL.
+
+Проверка:
+```bash
+curl -X POST http://127.0.0.1:8000/webhook/tilda \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "test=test"
+```
+
+## Проверка из Windows PowerShell
+Используйте `curl.exe` (не алиас `curl`):
+
+```powershell
+curl.exe -i http://45.8.98.114:8000/
+curl.exe -X POST https://ВАШ_ДОМЕН/webhook/tilda -d "test=test"
+```
+
+## Автообновление с Git на сервере (чтобы тянулось само)
+
+Сделайте это **один раз** на самом сервере:
+
+```bash
+cd /root/tmp_sk/yandex_site_checker
+bash scripts/install_autoupdate_cron.sh /root/tmp_sk/yandex_site_checker main
+```
+
+Что будет дальше:
+- каждую минуту сервер проверяет `origin/main`;
+- если есть новые коммиты — делает `git reset --hard origin/main`;
+- обновляет зависимости `pip install -r requirements.txt`;
+- перезапускает приложение и проверяет `http://127.0.0.1:8000/`.
+
+Проверка, что автообновление включено:
+```bash
+crontab -l | grep update_from_git.sh
+```
+
+Лог автообновления:
+```bash
+tail -n 100 /tmp/wordstat_deploy.log
+```
+
+Ручной запуск обновления прямо сейчас:
+```bash
+bash scripts/update_from_git.sh /root/tmp_sk/yandex_site_checker main
+```
+
 ## Локальный запуск
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
-# заполните WORDSTAT_API_KEY
+cp .env.example .env  # заполните WORDSTAT_API_KEY
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -209,70 +192,12 @@ ruff check .
 black --check .
 ```
 
-## Webhook для Tilda
-Endpoint: `POST /webhook/tilda`
-
-Реализовано с учетом требований Tilda:
-- принимает `application/x-www-form-urlencoded` и `application/json`;
-- сразу после подключения Tilda отправляет `test=test` (POST), обработчик возвращает `200 OK` и тело `ok`;
-- обработчик легковесный и отвечает быстро (в пределах 5 секунд);
-- поддерживается HTTPS-требование на уровне инфраструктуры (TLS-терминация);
-- Tilda при недоступности webhook может делать повторные попытки отправки (по документации: еще 2 попытки с интервалом около минуты).
-
-Что обычно приходит от Tilda в payload:
-- поля формы (`Name`, `Email`, `Phone` и т.д., либо кастомные имена);
-- служебные поля вроде `tranid` (ID заявки) и `formid` (ID блока);
-- опционально `COOKIES`, если включена передача cookie в настройках Tilda;
-- опционально API-ключ (если настроен в Tilda) — в POST-поле или заголовке.
-
-### Проверка webhook (curl)
-
-Form-urlencoded (проверка test-хука):
-
-```bash
-curl -X POST http://localhost:8000/webhook/tilda \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "test=test"
-```
-
-Form-urlencoded (пример payload заявки):
-
-```bash
-curl -X POST http://localhost:8000/webhook/tilda \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "Name=Иван&Email=test%40email.com&Phone=0123456789&tranid=467251:8442970&formid=form48844953"
-```
-
-JSON:
-
-```bash
-curl -X POST http://localhost:8000/webhook/tilda \
-  -H "Content-Type: application/json" \
-  -d '{"test":"test"}'
-```
-
-## Пример запроса генерации медиаплана
-
-```bash
-curl -X POST http://localhost:8000/generate \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "niche=ремонт+квартир&region=Москва&monthly_budget=120000&campaign_goal=Лиды" \
-  -o media_plan_wordstat.pdf
-```
-
 ## Production: варианты деплоя (без nginx и с nginx)
-
-
-### Когда nginx не нужен
-Для небольшого приложения nginx не обязателен. Можно запустить только `gunicorn` (или `uvicorn`) и открыть порт сервера напрямую.
-
-Это нормально для простого VPS-сценария, если вам не нужны дополнительные возможности reverse proxy.
 
 ### 1) gunicorn
 
 ```bash
 pip install gunicorn
-
 gunicorn app.main:app \
   -k uvicorn.workers.UvicornWorker \
   -b 127.0.0.1:8000 \
@@ -280,29 +205,29 @@ gunicorn app.main:app \
 ```
 
 ### 2) nginx (опционально, как reverse proxy)
+
 Пример server-блока:
 
 ```nginx
 server {
-    listen 443 ssl;
-    server_name your-domain.example;
-
-    ssl_certificate /etc/letsencrypt/live/your-domain.example/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/your-domain.example/privkey.pem;
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+  listen 443 ssl;
+  server_name your-domain.example;
+  ssl_certificate /etc/letsencrypt/live/your-domain.example/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/your-domain.example/privkey.pem;
+  location / {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
 }
 ```
 
-> Для webhook Tilda **обязательно HTTPS**. HTTPS можно обеспечить как через nginx + сертификат, так и через любой другой TLS-терминатор (например, Caddy или Cloudflare Tunnel).
+> Для webhook Tilda **обязательно HTTPS**.
 
 ### 3) systemd unit
+
 `/etc/systemd/system/wordstat-planner.service`:
 
 ```ini
@@ -332,7 +257,7 @@ sudo systemctl status wordstat-planner
 ```
 
 ## Важные ограничения
+
 - Используются только данные Wordstat API.
 - Если API недоступен/вернул ошибку — пользователю показывается понятное сообщение на русском.
 - В прод-логике отсутствуют моки, случайные значения и fallback-оценки.
-main
