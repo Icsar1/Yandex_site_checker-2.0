@@ -6,7 +6,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+codex/create-web-app-for-media-plan-using-yandex-api-isv5zt
+import httpx
+
+from app.services.wordstat_client import WordstatAPIError, WordstatClient, WordstatKeyword
+=======
 from app.services.wordstat_client import WordstatAPIError, WordstatKeyword
+main
 
 
 @pytest.fixture
@@ -19,8 +25,12 @@ def test_validation_error_for_empty_required_fields(client: TestClient) -> None:
         "/generate",
         data={"niche": " ", "region": " ", "monthly_budget": "", "campaign_goal": ""},
     )
+codex/create-web-app-for-media-plan-using-yandex-api-isv5zt
+    assert response.status_code == 422
+=======
     assert response.status_code == 400
     assert "Ошибка валидации" in response.text
+main
 
 
 def test_api_error_is_shown_to_user(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -73,3 +83,17 @@ def test_tilda_webhook_json_payload(client: TestClient) -> None:
     )
     assert response.status_code == 200
     assert response.text == "ok"
+codex/create-web-app-for-media-plan-using-yandex-api-isv5zt
+
+
+def test_build_quota_message_contains_refill_seconds() -> None:
+    response = httpx.Response(status_code=429, text="Quota limit exceeded, try again later. Time to refill: 42 seconds")
+    message = WordstatClient._build_quota_message(response)
+    assert "42 сек" in message
+
+
+def test_build_quota_message_without_refill_seconds() -> None:
+    response = httpx.Response(status_code=429, text="Quota limit exceeded")
+    message = WordstatClient._build_quota_message(response)
+    assert "Попробуйте позже" in message
+main
