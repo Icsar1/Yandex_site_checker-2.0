@@ -65,6 +65,27 @@ pkill -f "uvicorn app.main:app"
 curl.exe -i http://45.8.98.114:8000/
 ```
 
+
+## Если на `127.0.0.1:8000` приходит `404 Not Found`
+Это значит, что на порту 8000 уже висит **чужой процесс**, а не это приложение.
+
+Сделайте так (в этой же консоли):
+
+```bash
+ss -lntp | grep :8000
+pkill -f "uvicorn app.main:app"
+cd /root/tmp_sk/yandex_site_checker
+. .venv/bin/activate
+nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
+curl -i http://127.0.0.1:8000/
+```
+
+Если снова не 200 — покажите лог:
+
+```bash
+tail -n 80 /tmp/app.log
+```
+
 ## Что умеет
 - Форма на `/` (ниша, регион, бюджет, цель).
 - Генерация PDF на `/generate`.
