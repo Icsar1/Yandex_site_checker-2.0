@@ -67,6 +67,16 @@ def test_tilda_webhook_test_payload_form(client: TestClient) -> None:
     assert response.text == "ok"
 
 
+def test_tilda_webhook_legacy_path_form_payload(client: TestClient) -> None:
+    response = client.post(
+        "/lead/seo",
+        data={"test": "test"},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 200
+    assert response.text == "ok"
+
+
 def test_tilda_webhook_json_payload(client: TestClient) -> None:
     response = client.post(
         "/webhook/tilda",
