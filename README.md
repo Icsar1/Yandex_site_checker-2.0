@@ -11,6 +11,11 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
+Для корректной кириллицы в PDF установите шрифты DejaVu:
+```bash
+apt install -y fonts-dejavu-core
+```
+
 Откройте `.env` и заполните минимум:
 ```env
 WORDSTAT_OAUTH_TOKEN=ваш_токен

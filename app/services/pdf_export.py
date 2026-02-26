@@ -1,20 +1,29 @@
 from __future__ import annotations
 
 from io import BytesIO
+from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.schemas import MediaPlanResult
 
 
 class PDFExportService:
+    _FONT_NAME = "DejaVuSans"
+    _FONT_NAME_BOLD = "DejaVuSans-Bold"
+
+    def __init__(self) -> None:
+        self._register_fonts()
+
     def generate(self, media_plan: MediaPlanResult) -> bytes:
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
-        styles = getSampleStyleSheet()
+        styles = self._build_styles()
         story = []
 
         story.append(Paragraph("Медиаплан Яндекс Wordstat", styles["Title"]))
@@ -39,6 +48,8 @@ class PDFExportService:
                     ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("FONTNAME", (0, 0), (-1, 0), self._FONT_NAME_BOLD),
+                    ("FONTNAME", (0, 1), (-1, -1), self._FONT_NAME),
                 ]
             )
         )
@@ -65,3 +76,54 @@ class PDFExportService:
 
         doc.build(story)
         return buffer.getvalue()
+
+    def _build_styles(self) -> dict[str, ParagraphStyle]:
+        sample_styles = getSampleStyleSheet()
+        return {
+            "Title": ParagraphStyle(
+                "TitleCyr",
+                parent=sample_styles["Title"],
+                fontName=self._FONT_NAME_BOLD,
+            ),
+            "Normal": ParagraphStyle(
+                "NormalCyr",
+                parent=sample_styles["Normal"],
+                fontName=self._FONT_NAME,
+            ),
+            "Italic": ParagraphStyle(
+                "ItalicCyr",
+                parent=sample_styles["Italic"],
+                fontName=self._FONT_NAME,
+            ),
+        }
+
+    @classmethod
+    def _register_fonts(cls) -> None:
+        if cls._FONT_NAME in pdfmetrics.getRegisteredFontNames():
+            return
+
+        regular_path, bold_path = cls._resolve_font_paths()
+        pdfmetrics.registerFont(TTFont(cls._FONT_NAME, str(regular_path)))
+        pdfmetrics.registerFont(TTFont(cls._FONT_NAME_BOLD, str(bold_path)))
+
+    @staticmethod
+    def _resolve_font_paths() -> tuple[Path, Path]:
+        candidates = [
+            (
+                Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+                Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+            ),
+            (
+                Path("/usr/share/fonts/dejavu/DejaVuSans.ttf"),
+                Path("/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"),
+            ),
+        ]
+
+        for regular, bold in candidates:
+            if regular.exists() and bold.exists():
+                return regular, bold
+
+        raise FileNotFoundError(
+            "Не найден шрифт DejaVuSans для генерации PDF с кириллицей. "
+            "Установите пакет шрифтов dejavu-fonts."
+        )
