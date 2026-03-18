@@ -47,12 +47,14 @@ class WordstatClient:
             raise WordstatAuthError("OAuth токен Wordstat API не задан в переменных окружения")
 
         region_id = await self._resolve_region_id(region)
+
         payload: dict[str, Any] = {
             "phrase": niche,
             "regions": [region_id],
             "devices": ["all"],
             "numPhrases": 200,
         }
+
         data = await self._post_json("/v1/topRequests", payload)
 
         if isinstance(data, list):
@@ -78,14 +80,18 @@ class WordstatClient:
         for item in top_requests:
             if not isinstance(item, dict):
                 continue
+
             phrase = str(item.get("phrase") or "").strip()
             count_raw = item.get("count")
+
             if not phrase or count_raw is None:
                 continue
+
             try:
                 count = int(count_raw)
             except (TypeError, ValueError):
                 continue
+
             keywords.append(WordstatKeyword(phrase=phrase, frequency=count, match_type="topRequests"))
 
         if not keywords:
@@ -108,6 +114,7 @@ class WordstatClient:
                 "Указанный регион не найден в справочнике Wordstat API. "
                 "Проверьте название региона (например: Москва, Санкт-Петербург)."
             )
+
         return region_id
 
     async def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any] | list[Any]:
@@ -171,7 +178,6 @@ class WordstatClient:
                 for item in node:
                     walk(item)
                 return
-
             if not isinstance(node, dict):
                 return
 
