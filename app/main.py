@@ -78,15 +78,21 @@ async def generate_media_plan(
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
-@app.post("/webhook/tilda")
-async def tilda_webhook(request: Request) -> PlainTextResponse:
+def _parse_tilda_payload(content_type: str, payload_candidate: Any) -> dict[str, Any]:
+    if "application/json" in content_type and isinstance(payload_candidate, dict):
+        return payload_candidate
+    if isinstance(payload_candidate, dict):
+        return payload_candidate
+    return {}
+
+
+async def _handle_tilda_webhook(request: Request) -> PlainTextResponse:
     payload: dict[str, Any] = {}
     content_type = request.headers.get("content-type", "")
     try:
         if "application/json" in content_type:
             json_payload = await request.json()
-            if isinstance(json_payload, dict):
-                payload = json_payload
+            payload = _parse_tilda_payload(content_type, json_payload)
         else:
             form_data = await request.form()
             payload = dict(form_data)
@@ -101,6 +107,16 @@ async def tilda_webhook(request: Request) -> PlainTextResponse:
         content_type or "-",
     )
     return PlainTextResponse("ok", status_code=200)
+
+
+@app.post("/webhook/tilda")
+async def tilda_webhook(request: Request) -> PlainTextResponse:
+    return await _handle_tilda_webhook(request)
+
+
+@app.post("/lead/seo")
+async def tilda_webhook_legacy(request: Request) -> PlainTextResponse:
+    return await _handle_tilda_webhook(request)
 
 
 def _render_error(request: Request, message: str, status_code: int) -> HTMLResponse:

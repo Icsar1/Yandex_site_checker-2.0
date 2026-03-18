@@ -11,6 +11,11 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
+Для корректной кириллицы в PDF установите шрифты DejaVu:
+```bash
+apt install -y fonts-dejavu-core
+```
+
 Откройте `.env` и заполните минимум:
 ```env
 WORDSTAT_OAUTH_TOKEN=ваш_токен
@@ -35,7 +40,6 @@ tail -n 80 /tmp/app.log
 
 ## Ошибка при `git commit` и `git push origin work`
 Если видите ошибки `Author identity unknown` и `src refspec work does not match any`, выполните:
-
 ```bash
 cd /root/tmp_sk/yandex_site_checker
 
@@ -55,7 +59,6 @@ git push -u origin work
 ```
 
 Если `work` не нужна, можно пушить текущую ветку так:
-
 ```bash
 git push -u origin HEAD
 ```
@@ -74,7 +77,6 @@ curl -i http://127.0.0.1:8000/
 
 ## Если в файлах появились маркеры конфликта Git
 Это следы неудачного merge. Быстрое восстановление:
-
 ```bash
 cd /root/tmp_sk/yandex_site_checker
 git reset --hard HEAD
@@ -95,7 +97,6 @@ bash scripts/recover_404.sh
 - сразу печатает HTTP-статус и хвост лога.
 
 ## Структура проекта
-
 ```
 app/main.py
 app/services/wordstat_client.py
@@ -107,9 +108,7 @@ tests/test_app.py
 ```
 
 ## Переменные окружения
-
 Создайте `.env` на основе `.env.example`:
-
 - `WORDSTAT_OAUTH_TOKEN` — OAuth-токен (обязательно).
 - `WORDSTAT_API_KEY` — API-ключ (обязательно).
 - `WORDSTAT_BASE_URL` — базовый URL API.
@@ -117,6 +116,12 @@ tests/test_app.py
 - `WORDSTAT_TIMEOUT_SECONDS` — таймаут API-запроса.
 - `REQUEST_LOG_LEVEL` — уровень логирования.
 - `DEBUG` — режим отладки.
+- `DIRECT_LOGIN` — логин Яндекс.Директ.
+- `DIRECT_PASSWORD` — пароль Яндекс.Директ.
+- `DIRECT_COOKIES_PATH` — путь к файлу cookies.
+- `DIRECT_DEFAULT_REGION` — регион по умолчанию.
+- `DIRECT_HEADLESS` — headless-режим браузера.
+- `DIRECT_TIMEOUT_SECONDS` — таймаут браузера.
 
 ## Webhook Tilda
 Endpoint:
@@ -136,16 +141,13 @@ curl -X POST http://127.0.0.1:8000/webhook/tilda \
 
 ## Проверка из Windows PowerShell
 Используйте `curl.exe` (не алиас `curl`):
-
 ```powershell
 curl.exe -i http://45.8.98.114:8000/
 curl.exe -X POST https://ВАШ_ДОМЕН/webhook/tilda -d "test=test"
 ```
 
 ## Автообновление с Git на сервере (чтобы тянулось само)
-
 Сделайте это **один раз** на самом сервере:
-
 ```bash
 cd /root/tmp_sk/yandex_site_checker
 bash scripts/install_autoupdate_cron.sh /root/tmp_sk/yandex_site_checker main
@@ -173,7 +175,6 @@ bash scripts/update_from_git.sh /root/tmp_sk/yandex_site_checker main
 ```
 
 ## Локальный запуск
-
 ```bash
 python -m venv .venv
 source .venv/bin/activate
@@ -185,7 +186,6 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 Откройте: `http://localhost:8000`
 
 ## Запуск тестов и линтеров
-
 ```bash
 pytest
 ruff check .
@@ -195,7 +195,6 @@ black --check .
 ## Production: варианты деплоя (без nginx и с nginx)
 
 ### 1) gunicorn
-
 ```bash
 pip install gunicorn
 gunicorn app.main:app \
@@ -205,31 +204,26 @@ gunicorn app.main:app \
 ```
 
 ### 2) nginx (опционально, как reverse proxy)
-
 Пример server-блока:
-
 ```nginx
 server {
-  listen 443 ssl;
-  server_name your-domain.example;
-  ssl_certificate /etc/letsencrypt/live/your-domain.example/fullchain.pem;
-  ssl_certificate_key /etc/letsencrypt/live/your-domain.example/privkey.pem;
-  location / {
-    proxy_pass http://127.0.0.1:8000;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-  }
+    listen 443 ssl;
+    server_name your-domain.example;
+    ssl_certificate /etc/letsencrypt/live/your-domain.example/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.example/privkey.pem;
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 }
 ```
 
 > Для webhook Tilda **обязательно HTTPS**.
 
-### 3) systemd unit
-
-`/etc/systemd/system/wordstat-planner.service`:
-
+### 3) systemd unit `/etc/systemd/system/wordstat-planner.service`:
 ```ini
 [Unit]
 Description=Wordstat Media Planner
@@ -248,7 +242,6 @@ WantedBy=multi-user.target
 ```
 
 Далее:
-
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable wordstat-planner
@@ -257,7 +250,6 @@ sudo systemctl status wordstat-planner
 ```
 
 ## Важные ограничения
-
 - Используются только данные Wordstat API.
 - Если API недоступен/вернул ошибку — пользователю показывается понятное сообщение на русском.
 - В прод-логике отсутствуют моки, случайные значения и fallback-оценки.
