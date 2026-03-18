@@ -13,6 +13,13 @@ class Settings(BaseSettings):
 
     request_log_level: str = "INFO"
 
+    direct_login: str = Field(default="")
+    direct_password: str = Field(default="")
+    direct_cookies_path: str = ".direct/cookies.json"
+    direct_default_region: str = "Москва"
+    direct_headless: bool = True
+    direct_timeout_seconds: float = 30.0
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
