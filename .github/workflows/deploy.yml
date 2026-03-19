@@ -12,7 +12,10 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
-          echo "$SSH_KEY" > /tmp/deploy_key
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" | tr ' ' '\n' | sed 's/-----BEGIN/\n-----BEGIN/;s/PRIVATEKEY-----/PRIVATE KEY-----\n/' > /tmp/deploy_key
+          sed -i '/^$/d' /tmp/deploy_key
           chmod 600 /tmp/deploy_key
+          cat /tmp/deploy_key
           ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no root@45.8.98.114 "cd /root/tmp_sk/yandex_site_checker && git pull origin main && source .venv/bin/activate && pip install -r requirements.txt"
           rm /tmp/deploy_key
