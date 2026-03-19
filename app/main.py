@@ -1,137 +1,128 @@
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any
-from urllib.parse import parse_qsl
+from __future__ import annotations
 
-from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+import logging
+from typing import Any
+
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, HttpUrl, ValidationError
 
 from app.config import settings
-from app.models import SeoLead
-from app.seo_service import SeoAnalyzer
-from app.storage import Storage
+from app.logging_config import setup_logging
+from app.schemas import MediaPlanRequest
+from app.services.media_plan import MediaPlanService
+from app.services.pdf_export import PDFExportService
+from app.services.wordstat_client import (
+    WordstatAPIError,
+    WordstatAuthError,
+    WordstatClient,
+    WordstatRateLimitError,
+    WordstatTimeoutError,
+)
 
-app = FastAPI(title="SEO Lead Analyzer")
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
-storage = Storage()
-analyzer = SeoAnalyzer()
-scheduler = BackgroundScheduler()
+setup_logging(settings.request_log_level)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title=settings.app_name, debug=settings.debug)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
+wordstat_client = WordstatClient()
+media_plan_service = MediaPlanService()
+pdf_export_service = PDFExportService()
 
 
-class LeadPayload(BaseModel):
-    name: str
-    phone: str
-    email: str
-    site_url: HttpUrl
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "index.html", {"error": None})
 
 
-def _normalize_tilda_payload(payload: dict[str, Any]) -> LeadPayload:
-    normalized_payload = {
-        "name": payload.get("name") or payload.get("Name") or payload.get("имя"),
-        "phone": payload.get("phone") or payload.get("Phone") or payload.get("телефон"),
-        "email": payload.get("email") or payload.get("Email") or payload.get("почта"),
-        "site_url": (
-            payload.get("site_url")
-            or payload.get("site")
-            or payload.get("website")
-            or payload.get("url")
-        ),
-    }
-
+@app.post("/generate", response_class=Response)
+async def generate_media_plan(
+    request: Request,
+    niche: str = Form(...),
+    region: str = Form(...),
+    monthly_budget: float | None = Form(default=None),
+    campaign_goal: str | None = Form(default=None),
+) -> Response:
     try:
-        return LeadPayload(**normalized_payload)
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+        req = MediaPlanRequest(
+            niche=niche,
+            region=region,
+            monthly_budget=monthly_budget,
+            campaign_goal=campaign_goal,
+        )
+        keywords = await wordstat_client.get_keywords(niche=req.niche, region=req.region)
+        plan = media_plan_service.build_plan(req=req, keywords=keywords)
+        pdf_bytes = pdf_export_service.generate(plan)
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {"error": f"Ошибка валидации: {exc}"},
+            status_code=400,
+        )
+    except WordstatAuthError as exc:
+        return _render_error(request, f"Ошибка авторизации API: {exc}", 502)
+    except WordstatRateLimitError as exc:
+        return _render_error(request, f"Слишком много запросов к API: {exc}", 429)
+    except WordstatTimeoutError as exc:
+        return _render_error(request, f"API не ответил вовремя: {exc}", 504)
+    except WordstatAPIError as exc:
+        return _render_error(request, f"Ошибка Wordstat API: {exc}", 502)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Unexpected generation error: %s", exc)
+        return _render_error(request, "Внутренняя ошибка сервиса", 500)
+    headers = {"Content-Disposition": 'attachment; filename="media_plan_wordstat.pdf"'}
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
-async def _parse_tilda_payload(request: Request) -> dict[str, Any]:
+def _parse_tilda_payload(content_type: str, payload_candidate: Any) -> dict[str, Any]:
+    if "application/json" in content_type and isinstance(payload_candidate, dict):
+        return payload_candidate
+    if isinstance(payload_candidate, dict):
+        return payload_candidate
+    return {}
+
+
+async def _handle_tilda_webhook(request: Request) -> PlainTextResponse:
+    payload: dict[str, Any] = {}
     content_type = request.headers.get("content-type", "")
-    if "application/json" in content_type:
-        return await request.json()
-
-    if "application/x-www-form-urlencoded" in content_type:
-        raw_body = (await request.body()).decode("utf-8")
-        return dict(parse_qsl(raw_body, keep_blank_values=True))
-
     try:
-        form_data = await request.form()
-        return dict(form_data)
-    except AssertionError:
-        raw_body = (await request.body()).decode("utf-8")
-        return dict(parse_qsl(raw_body, keep_blank_values=True))
-
-
-async def _build_report_response(payload: LeadPayload) -> JSONResponse:
-    lead = SeoLead(
-        name=payload.name,
-        phone=payload.phone,
-        email=payload.email,
-        site_url=str(payload.site_url),
+        if "application/json" in content_type:
+            json_payload = await request.json()
+            payload = _parse_tilda_payload(content_type, json_payload)
+        else:
+            form_data = await request.form()
+            payload = dict(form_data)
+    except Exception:  # noqa: BLE001
+        payload = {}
+    if payload.get("test") == "test":
+        return PlainTextResponse("ok", status_code=200)
+    logger.info(
+        "Tilda webhook received: keys=%s referer=%s content_type=%s",
+        list(payload.keys()),
+        request.headers.get("referer", "-"),
+        content_type or "-",
     )
-    report = await analyzer.analyze(lead)
-    storage.save_report(report)
-
-    report_url = f"{settings.app_base_url.rstrip('/')}/r/{report.report_id}"
-    return JSONResponse(
-        {
-            "message": "SEO отчет создан",
-            "report_url": report_url,
-            "expires_at": report.expires_at.isoformat(),
-        }
-    )
-
-
-@app.on_event("startup")
-def startup() -> None:
-    scheduler.add_job(
-        func=lambda: storage.delete_expired(datetime.now(tz=timezone.utc)),
-        trigger="interval",
-        hours=1,
-        id="cleanup_expired_reports",
-        replace_existing=True,
-    )
-    scheduler.start()
-
-
-@app.on_event("shutdown")
-def shutdown() -> None:
-    if scheduler.running:
-        scheduler.shutdown(wait=False)
-
-
-@app.get("/health")
-def health() -> dict:
-    return {"status": "ok", "provider": settings.seo_data_provider}
-
-
-@app.post("/lead/seo")
-async def create_seo_report(payload: LeadPayload):
-    return await _build_report_response(payload)
+    return PlainTextResponse("ok", status_code=200)
 
 
 @app.post("/webhook/tilda")
-async def create_seo_report_from_tilda(request: Request):
-    incoming_payload = await _parse_tilda_payload(request)
-    payload = _normalize_tilda_payload(incoming_payload)
-    return await _build_report_response(payload)
+async def tilda_webhook(request: Request) -> PlainTextResponse:
+    return await _handle_tilda_webhook(request)
 
 
-@app.get("/r/{report_id}")
-def report_page(request: Request, report_id: str):
-    report = storage.get_report(report_id)
-    if not report:
-        raise HTTPException(status_code=404, detail="Отчет не найден или удален")
+@app.post("/lead/seo")
+async def tilda_webhook_legacy(request: Request) -> PlainTextResponse:
+    return await _handle_tilda_webhook(request)
 
-    if report.expires_at < datetime.now(tz=timezone.utc):
-        raise HTTPException(status_code=410, detail="Срок хранения отчета истек")
 
+def _render_error(request: Request, message: str, status_code: int) -> HTMLResponse:
     return templates.TemplateResponse(
-        "report.html",
-        {
-            "request": request,
-            "report": report,
-        },
+        request,
+        "index.html",
+        {"error": message},
+        status_code=status_code,
     )
