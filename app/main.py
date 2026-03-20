@@ -74,6 +74,7 @@ async def generate_media_plan(
     except Exception as exc:  # noqa: BLE001
         logger.exception("Unexpected generation error: %s", exc)
         return _render_error(request, "Внутренняя ошибка сервиса", 500)
+
     headers = {"Content-Disposition": 'attachment; filename="media_plan_wordstat.pdf"'}
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
@@ -89,6 +90,7 @@ def _parse_tilda_payload(content_type: str, payload_candidate: Any) -> dict[str,
 async def _handle_tilda_webhook(request: Request) -> PlainTextResponse:
     payload: dict[str, Any] = {}
     content_type = request.headers.get("content-type", "")
+
     try:
         if "application/json" in content_type:
             json_payload = await request.json()
@@ -98,8 +100,10 @@ async def _handle_tilda_webhook(request: Request) -> PlainTextResponse:
             payload = dict(form_data)
     except Exception:  # noqa: BLE001
         payload = {}
+
     if payload.get("test") == "test":
         return PlainTextResponse("ok", status_code=200)
+
     logger.info(
         "Tilda webhook received: keys=%s referer=%s content_type=%s",
         list(payload.keys()),

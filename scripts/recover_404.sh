@@ -17,7 +17,7 @@ if [[ ! -f app/main.py ]]; then
   exit 1
 fi
 
-if ! rg -n '@app.get("/"' app/main.py >/dev/null; then
+if ! rg -n '@app.get\("/"' app/main.py >/dev/null; then
   echo "[error] route '/' is missing in $PROJECT_DIR/app/main.py"
   echo "[hint] this folder is not the expected project revision"
   exit 1
