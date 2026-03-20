@@ -102,6 +102,7 @@ class PDFExportService:
         if cls._FONT_NAME in pdfmetrics.getRegisteredFontNames():
             return
 
+         
         regular_path, bold_path = cls._resolve_font_paths()
         pdfmetrics.registerFont(TTFont(cls._FONT_NAME, str(regular_path)))
         pdfmetrics.registerFont(TTFont(cls._FONT_NAME_BOLD, str(bold_path)))
