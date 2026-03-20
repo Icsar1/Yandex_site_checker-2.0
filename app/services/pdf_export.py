@@ -70,8 +70,15 @@ class PDFExportService:
                     styles["Normal"],
                 )
             )
+ codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
+
         story.append(Spacer(1, 24))
         story.append(Paragraph("Данные получены через Wordstat API", styles["Italic"]))
+
+=======
+        story.append(Spacer(1, 24))
+        story.append(Paragraph("Данные получены через Wordstat API", styles["Italic"]))
+ main
         doc.build(story)
         return buffer.getvalue()
 
@@ -99,6 +106,10 @@ class PDFExportService:
     def _register_fonts(cls) -> None:
         if cls._FONT_NAME in pdfmetrics.getRegisteredFontNames():
             return
+ codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
+
+=======
+ main
         regular_path, bold_path = cls._resolve_font_paths()
         pdfmetrics.registerFont(TTFont(cls._FONT_NAME, str(regular_path)))
         pdfmetrics.registerFont(TTFont(cls._FONT_NAME_BOLD, str(bold_path)))
@@ -115,9 +126,17 @@ class PDFExportService:
                 Path("/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"),
             ),
         ]
+ codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
+
         for regular, bold in candidates:
             if regular.exists() and bold.exists():
                 return regular, bold
+
+=======
+        for regular, bold in candidates:
+            if regular.exists() and bold.exists():
+                return regular, bold
+ main
         raise FileNotFoundError(
             "Не найден шрифт DejaVuSans для генерации PDF с кириллицей. "
             "Установите пакет шрифтов dejavu-fonts."

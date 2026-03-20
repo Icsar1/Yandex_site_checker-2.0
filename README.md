@@ -30,7 +30,10 @@ nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
 ```bash
 curl -i http://127.0.0.1:8000/
 ```
+codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
+=======
 
+main
 Ожидается `HTTP/1.1 200 OK`.
 
 Если не `200`:
@@ -38,6 +41,8 @@ curl -i http://127.0.0.1:8000/
 tail -n 80 /tmp/app.log
 ```
 
+codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
+=======
 ## Ошибка при `git commit` и `git push origin work`
 Если видите ошибки `Author identity unknown` и `src refspec work does not match any`, выполните:
 ```bash
@@ -63,6 +68,7 @@ git push -u origin work
 git push -u origin HEAD
 ```
 
+main
 ## Если приходит 404 на `/`
 Обычно это значит, что на порту `8000` запущен другой процесс.
 
@@ -75,6 +81,8 @@ nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
 curl -i http://127.0.0.1:8000/
 ```
 
+ codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
+=======
 ## Если в файлах появились маркеры конфликта Git
 Это следы неудачного merge. Быстрое восстановление:
 ```bash
@@ -84,6 +92,7 @@ git clean -fd
 git pull --ff-only
 ```
 
+ main
 ## Быстрый фикс 404 (одной командой)
 Если на `http://127.0.0.1:8000/` получаете `{"detail":"Not Found"}`, запустите:
 
@@ -95,33 +104,6 @@ bash scripts/recover_404.sh
 - гасит процесс на порту `8000`;
 - поднимает **именно этот** проект через `python -m uvicorn --app-dir ... app.main:app`;
 - сразу печатает HTTP-статус и хвост лога.
-
-## Структура проекта
-```
-app/main.py
-app/services/wordstat_client.py
-app/services/media_plan.py
-app/services/pdf_export.py
-templates/index.html
-static/styles.css
-tests/test_app.py
-```
-
-## Переменные окружения
-Создайте `.env` на основе `.env.example`:
-- `WORDSTAT_OAUTH_TOKEN` — OAuth-токен (обязательно).
-- `WORDSTAT_API_KEY` — API-ключ (обязательно).
-- `WORDSTAT_BASE_URL` — базовый URL API.
-- `WORDSTAT_ENDPOINT` — endpoint Wordstat.
-- `WORDSTAT_TIMEOUT_SECONDS` — таймаут API-запроса.
-- `REQUEST_LOG_LEVEL` — уровень логирования.
-- `DEBUG` — режим отладки.
-- `DIRECT_LOGIN` — логин Яндекс.Директ.
-- `DIRECT_PASSWORD` — пароль Яндекс.Директ.
-- `DIRECT_COOKIES_PATH` — путь к файлу cookies.
-- `DIRECT_DEFAULT_REGION` — регион по умолчанию.
-- `DIRECT_HEADLESS` — headless-режим браузера.
-- `DIRECT_TIMEOUT_SECONDS` — таймаут браузера.
 
 ## Webhook Tilda
 Endpoint:
@@ -146,8 +128,22 @@ curl.exe -i http://45.8.98.114:8000/
 curl.exe -X POST https://ВАШ_ДОМЕН/webhook/tilda -d "test=test"
 ```
 
+ codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
+## ENV
+- `WORDSTAT_OAUTH_TOKEN` (обязательно)
+- `WORDSTAT_BASE_URL` (`https://api.wordstat.yandex.net`)
+- `WORDSTAT_TIMEOUT_SECONDS` (`10`)
+- `REQUEST_LOG_LEVEL` (`INFO`)
+- `DEBUG` (`false`)
+
+
 ## Автообновление с Git на сервере (чтобы тянулось само)
 Сделайте это **один раз** на самом сервере:
+
+=======
+## Автообновление с Git на сервере (чтобы тянулось само)
+Сделайте это **один раз** на самом сервере:
+ main
 ```bash
 cd /root/tmp_sk/yandex_site_checker
 bash scripts/install_autoupdate_cron.sh /root/tmp_sk/yandex_site_checker main
@@ -174,6 +170,8 @@ tail -n 100 /tmp/wordstat_deploy.log
 bash scripts/update_from_git.sh /root/tmp_sk/yandex_site_checker main
 ```
 
+ codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
+=======
 ## Локальный запуск
 ```bash
 python -m venv .venv
@@ -253,3 +251,4 @@ sudo systemctl status wordstat-planner
 - Используются только данные Wordstat API.
 - Если API недоступен/вернул ошибку — пользователю показывается понятное сообщение на русском.
 - В прод-логике отсутствуют моки, случайные значения и fallback-оценки.
+ main

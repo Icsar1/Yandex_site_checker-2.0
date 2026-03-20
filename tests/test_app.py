@@ -95,4 +95,8 @@ def test_build_quota_message_contains_refill_seconds() -> None:
 def test_build_quota_message_without_refill_seconds() -> None:
     response = httpx.Response(status_code=429, text="Quota limit exceeded")
     message = WordstatClient._build_quota_message(response)
+ codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
     assert "Попробуйте позже" in message
+=======
+    assert "Попробуйте позже" in message
+ main
