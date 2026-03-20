@@ -7,8 +7,14 @@ class Settings(BaseSettings):
     debug: bool = False
 
     wordstat_oauth_token: str = Field(default="")
+ codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
     wordstat_api_key: str = Field(default="")  # legacy fallback name
     wordstat_base_url: AnyHttpUrl = "https://api.wordstat.yandex.net"
+=======
+    wordstat_api_key: str = Field(default="", min_length=0)  # legacy fallback name
+    wordstat_base_url: AnyHttpUrl = "https://api.wordstat.yandex.net"
+    wordstat_endpoint: str = "/json/v5/wordstat"
+ main
     wordstat_timeout_seconds: float = 10.0
 
     request_log_level: str = "INFO"

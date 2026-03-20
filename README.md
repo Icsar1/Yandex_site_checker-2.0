@@ -30,6 +30,10 @@ nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
 ```bash
 curl -i http://127.0.0.1:8000/
 ```
+codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
+=======
+
+main
 Ожидается `HTTP/1.1 200 OK`.
 
 Если не `200`:
@@ -37,6 +41,34 @@ curl -i http://127.0.0.1:8000/
 tail -n 80 /tmp/app.log
 ```
 
+codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
+=======
+## Ошибка при `git commit` и `git push origin work`
+Если видите ошибки `Author identity unknown` и `src refspec work does not match any`, выполните:
+```bash
+cd /root/tmp_sk/yandex_site_checker
+
+# 1) Один раз настроить имя и email для git на сервере
+git config --global user.name "Ваше Имя"
+git config --global user.email "you@example.com"
+
+# 2) Убедиться, что вы на ветке work (или создать её)
+git checkout -B work
+
+# 3) Закоммитить
+git add .
+git commit -m "merge: resolve conflicts with main"
+
+# 4) Первый push ветки work на origin
+git push -u origin work
+```
+
+Если `work` не нужна, можно пушить текущую ветку так:
+```bash
+git push -u origin HEAD
+```
+
+main
 ## Если приходит 404 на `/`
 Обычно это значит, что на порту `8000` запущен другой процесс.
 
@@ -49,6 +81,18 @@ nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/app.log 2>&1 &
 curl -i http://127.0.0.1:8000/
 ```
 
+ codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
+=======
+## Если в файлах появились маркеры конфликта Git
+Это следы неудачного merge. Быстрое восстановление:
+```bash
+cd /root/tmp_sk/yandex_site_checker
+git reset --hard HEAD
+git clean -fd
+git pull --ff-only
+```
+
+ main
 ## Быстрый фикс 404 (одной командой)
 Если на `http://127.0.0.1:8000/` получаете `{"detail":"Not Found"}`, запустите:
 
@@ -84,6 +128,7 @@ curl.exe -i http://45.8.98.114:8000/
 curl.exe -X POST https://ВАШ_ДОМЕН/webhook/tilda -d "test=test"
 ```
 
+ codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
 ## ENV
 - `WORDSTAT_OAUTH_TOKEN` (обязательно)
 - `WORDSTAT_BASE_URL` (`https://api.wordstat.yandex.net`)
@@ -95,6 +140,10 @@ curl.exe -X POST https://ВАШ_ДОМЕН/webhook/tilda -d "test=test"
 ## Автообновление с Git на сервере (чтобы тянулось само)
 Сделайте это **один раз** на самом сервере:
 
+=======
+## Автообновление с Git на сервере (чтобы тянулось само)
+Сделайте это **один раз** на самом сервере:
+ main
 ```bash
 cd /root/tmp_sk/yandex_site_checker
 bash scripts/install_autoupdate_cron.sh /root/tmp_sk/yandex_site_checker main
@@ -121,3 +170,85 @@ tail -n 100 /tmp/wordstat_deploy.log
 bash scripts/update_from_git.sh /root/tmp_sk/yandex_site_checker main
 ```
 
+ codex/create-web-app-for-media-plan-using-yandex-api-f1le2c
+=======
+## Локальный запуск
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env  # заполните WORDSTAT_API_KEY
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Откройте: `http://localhost:8000`
+
+## Запуск тестов и линтеров
+```bash
+pytest
+ruff check .
+black --check .
+```
+
+## Production: варианты деплоя (без nginx и с nginx)
+
+### 1) gunicorn
+```bash
+pip install gunicorn
+gunicorn app.main:app \
+  -k uvicorn.workers.UvicornWorker \
+  -b 127.0.0.1:8000 \
+  -w 2
+```
+
+### 2) nginx (опционально, как reverse proxy)
+Пример server-блока:
+```nginx
+server {
+    listen 443 ssl;
+    server_name your-domain.example;
+    ssl_certificate /etc/letsencrypt/live/your-domain.example/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.example/privkey.pem;
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+> Для webhook Tilda **обязательно HTTPS**.
+
+### 3) systemd unit `/etc/systemd/system/wordstat-planner.service`:
+```ini
+[Unit]
+Description=Wordstat Media Planner
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/wordstat-planner
+EnvironmentFile=/opt/wordstat-planner/.env
+ExecStart=/opt/wordstat-planner/.venv/bin/gunicorn app.main:app -k uvicorn.workers.UvicornWorker -b 127.0.0.1:8000 -w 2
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Далее:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable wordstat-planner
+sudo systemctl start wordstat-planner
+sudo systemctl status wordstat-planner
+```
+
+## Важные ограничения
+- Используются только данные Wordstat API.
+- Если API недоступен/вернул ошибку — пользователю показывается понятное сообщение на русском.
+- В прод-логике отсутствуют моки, случайные значения и fallback-оценки.
+ main
