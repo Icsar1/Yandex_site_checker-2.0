@@ -1,0 +1,11 @@
+services:
+  wordstat-media-planner:
+    build: .
+    container_name: wordstat-media-planner
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data

@@ -2,6 +2,35 @@
 
 FastAPI-приложение для медиаплана **только по данным Wordstat API**.
 
+
+## Документация
+- [Черновик PRD](docs/prd_draft.md) — описание продукта, целевого стека, логики работы MVP и следующих итераций.
+
+
+## Docker и служебные скрипты
+
+Запуск в Docker:
+```bash
+docker compose build
+docker compose up -d
+```
+
+Ручной запуск без Docker:
+```bash
+bash scripts/start.sh
+bash scripts/stop.sh
+```
+
+Установка на VPS Unix/Linux с Docker и systemd:
+```bash
+sudo REPO_URL=https://github.com/OWNER/REPO.git BRANCH=main bash scripts/install_vps_unix.sh /opt/wordstat-media-planner
+```
+
+Запуск тестов на Windows PowerShell:
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run_tests_windows.ps1
+```
+
 ## Быстрый запуск (одна серверная консоль)
 ```bash
 cd /root/tmp_sk/yandex_site_checker
