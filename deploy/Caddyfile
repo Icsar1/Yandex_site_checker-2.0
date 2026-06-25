@@ -1,0 +1,42 @@
+{$DOMAIN} {
+    encode gzip zstd
+
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy strict-origin-when-cross-origin
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+        -Server
+    }
+
+    # API and auth paths -> backend
+    handle /api/* {
+        reverse_proxy api:8000
+    }
+    handle /access* {
+        reverse_proxy api:8000
+    }
+    handle /healthz {
+        reverse_proxy api:8000
+    }
+    handle /readyz {
+        reverse_proxy api:8000
+    }
+
+    # SPA (React build): everything else
+    handle {
+        root * /srv/frontend/dist
+        try_files {path} /index.html
+        file_server {
+            hide .git
+        }
+    }
+
+    log {
+        output stdout
+        format json
+    }
+}

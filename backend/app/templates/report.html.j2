@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Медиаплан: {{ niche }}</title>
+  <style>
+    @font-face {
+      font-family: "ReportSans";
+      src:
+        local("Inter"),
+        local("Segoe UI"),
+        url("../static/fonts/ReportSans-Regular.woff2") format("woff2");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "ReportSans";
+      src:
+        local("Inter Semi Bold"),
+        local("Segoe UI Semibold"),
+        url("../static/fonts/ReportSans-SemiBold.woff2") format("woff2");
+      font-weight: 700;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @page {
+      size: A4;
+      margin: 24px;
+    }
+
+    :root {
+      --primary: #1A56DB;
+      --accent: #16A34A;
+      --ink: #111827;
+      --muted: #6B7280;
+      --hairline: #E5E7EB;
+      --surface: #F9FAFB;
+      --paper: #FFFFFF;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      font-family: "ReportSans", "Segoe UI", Arial, "Noto Sans", "DejaVu Sans", sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+    }
+
+    .running-header,
+    .page-footer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.2;
+    }
+
+    .running-header {
+      top: 0;
+      display: flex;
+      justify-content: space-between;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--hairline);
+    }
+
+    .page-footer {
+      bottom: 0;
+      display: flex;
+      justify-content: space-between;
+      padding-top: 8px;
+      border-top: 1px solid var(--hairline);
+    }
+
+    .page-footer::after {
+      content: "Страница " counter(page);
+    }
+
+    .report-page {
+      padding: 44px 0 32px;
+    }
+
+    .cover {
+      min-height: 720px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      page-break-after: always;
+    }
+
+    .cover-kicker {
+      margin: 0 0 16px;
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .cover h1 {
+      max-width: 620px;
+      margin: 0;
+      font-size: 38px;
+      line-height: 1.12;
+      font-weight: 700;
+    }
+
+    .cover-meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 48px;
+      padding-top: 24px;
+      border-top: 3px solid var(--primary);
+    }
+
+    .meta-label,
+    .kpi-label,
+    .table-caption,
+    .section-kicker {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .meta-value {
+      margin-top: 4px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .section {
+      margin: 0 0 24px;
+      page-break-inside: avoid;
+    }
+
+    .section h2 {
+      margin: 0 0 12px;
+      font-size: 20px;
+      line-height: 1.2;
+    }
+
+    .summary-card,
+    .group-card,
+    .disclaimer {
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      background: var(--paper);
+      page-break-inside: avoid;
+    }
+
+    .summary-card {
+      padding: 20px;
+      border-left: 5px solid var(--primary);
+      white-space: pre-line;
+    }
+
+    .summary-card p,
+    .disclaimer p,
+    .group-card p {
+      margin: 0;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .kpi-card {
+      min-height: 96px;
+      padding: 16px;
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .kpi-value {
+      margin-top: 8px;
+      color: var(--primary);
+      font-size: 24px;
+      line-height: 1.15;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .kpi-note {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .forecast-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      overflow: hidden;
+      page-break-inside: auto;
+    }
+
+    .forecast-table th,
+    .forecast-table td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--hairline);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .forecast-table th {
+      color: var(--muted);
+      background: var(--surface);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .forecast-table tbody tr:nth-child(even) {
+      background: var(--surface);
+    }
+
+    .forecast-table tbody tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .number {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .groups-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .group-card {
+      padding: 16px;
+    }
+
+    .group-card h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      line-height: 1.25;
+    }
+
+    .kw-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .kw-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 3px 8px;
+      border: 1px solid #BFDBFE;
+      border-radius: 999px;
+      color: #1E40AF;
+      background: #EFF6FF;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .list-conclusions,
+    .list-reco {
+      margin: 0;
+      padding-left: 22px;
+    }
+
+    .list-conclusions li,
+    .list-reco li {
+      margin: 0 0 8px;
+      padding-left: 4px;
+    }
+
+    .list-conclusions li::marker {
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    .list-reco li::marker {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .bars {
+      display: grid;
+      gap: 10px;
+    }
+
+    .bar {
+      display: grid;
+      grid-template-columns: minmax(160px, 1.5fr) minmax(220px, 2fr) 88px;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .bar-label {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-weight: 700;
+    }
+
+    .bar-track {
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--hairline);
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+    }
+
+    .bar-value {
+      text-align: right;
+    }
+
+    .disclaimer {
+      padding: 16px;
+      color: var(--muted);
+      background: var(--surface);
+      font-size: 11px;
+    }
+
+    @media print {
+      html,
+      body {
+        width: 100%;
+        min-height: 100%;
+      }
+
+      .section,
+      .group-card,
+      .kpi-card,
+      .summary-card,
+      .disclaimer {
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  {% set top_keywords = aggregates.get("top_keywords", []) %}
+  {% set max_spending = top_keywords[0].get("spending", 0) | float if top_keywords else 0 %}
+
+  {% macro number_cell(value, suffix="") -%}
+    {% if value is defined and value is not none %}
+      <span class="number">{{ value | format_number }}{{ suffix }}</span>
+    {% else %}
+      <span class="muted">-</span>
+    {% endif %}
+  {%- endmacro %}
+
+  <header class="running-header">
+    <span>Yandex Mediaplan MVP</span>
+    <span>{{ generated_at }}</span>
+  </header>
+
+  <footer class="page-footer">
+    <span>{{ niche }} - {{ region }}</span>
+  </footer>
+
+  <main class="report-page">
+    <section class="cover">
+      <p class="cover-kicker">Прогнозный медиаплан</p>
+      <h1>{{ niche }}</h1>
+      <div class="cover-meta">
+        <div>
+          <div class="meta-label">Регион</div>
+          <div class="meta-value">{{ region }}</div>
+        </div>
+        <div>
+          <div class="meta-label">Дата</div>
+          <div class="meta-value">{{ generated_at }}</div>
+        </div>
+        <div>
+          <div class="meta-label">Ключевых фраз</div>
+          <div class="meta-value number">{{ aggregates.get("n_keywords", 0) | int | format_number }}</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-kicker">Executive summary</div>
+      <h2>Краткое резюме</h2>
+      <div class="summary-card">
+        <p>{{ report.get("summary", "") }}</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-kicker">KPI</div>
+      <h2>Основные показатели прогноза</h2>
+      <div class="kpi-grid">
+        <article class="kpi-card">
+          <div class="kpi-label">Показы</div>
+          <div class="kpi-value number">{{ aggregates.get("total_impressions", 0) | int | format_number }}</div>
+          <div class="kpi-note">Суммарный прогноз</div>
+        </article>
+        <article class="kpi-card">
+          <div class="kpi-label">Клики</div>
+          <div class="kpi-value number">{{ aggregates.get("total_clicks", 0) | int | format_number }}</div>
+          <div class="kpi-note">Ожидаемый объем</div>
+        </article>
+        <article class="kpi-card">
+          <div class="kpi-label">Бюджет</div>
+          <div class="kpi-value number">{{ aggregates.get("total_spending", 0) | format_number }}</div>
+          <div class="kpi-note">руб.</div>
+        </article>
+        <article class="kpi-card">
+          <div class="kpi-label">Средний CPC</div>
+          <div class="kpi-value number">{{ aggregates.get("avg_cpc", 0) | format_number }}</div>
+          <div class="kpi-note">руб. за клик</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-kicker">Forecast</div>
+      <h2>Топ фраз по бюджету</h2>
+      <table class="forecast-table">
+        <caption class="table-caption">Первые 10 фраз из агрегатов прогноза</caption>
+        <thead>
+          <tr>
+            <th>Фраза</th>
+            <th>Показы</th>
+            <th>Клики</th>
+            <th>Бюджет</th>
+            <th>CTR</th>
+            <th>CPC</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in top_keywords[:10] %}
+            <tr>
+              <td>{{ item.get("phrase", "") }}</td>
+              <td>{{ number_cell(item.get("impressions")) }}</td>
+              <td>{{ number_cell(item.get("clicks")) }}</td>
+              <td>{{ number_cell(item.get("spending"), " руб.") }}</td>
+              <td>{{ number_cell(item.get("ctr"), "%") }}</td>
+              <td>{{ number_cell(item.get("cpc"), " руб.") }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="6" class="muted">Нет данных для таблицы прогноза.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <div class="section-kicker">Groups</div>
+      <h2>Группы ключевых фраз</h2>
+      <div class="groups-grid">
+        {% for group in report.get("groups", []) %}
+          <article class="group-card">
+            <h3>{{ group.get("title", "") }}</h3>
+            <p>{{ group.get("description", "") }}</p>
+            <div class="kw-list">
+              {% for keyword in group.get("sample_keywords", []) %}
+                <span class="kw-chip">{{ keyword }}</span>
+              {% endfor %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-kicker">Conclusions</div>
+      <h2>Выводы</h2>
+      <ol class="list-conclusions">
+        {% for conclusion in report.get("conclusions", []) %}
+          <li>{{ conclusion }}</li>
+        {% endfor %}
+      </ol>
+    </section>
+
+    <section class="section">
+      <div class="section-kicker">Recommendations</div>
+      <h2>Рекомендации</h2>
+      <ol class="list-reco">
+        {% for recommendation in report.get("recommendations", []) %}
+          <li>{{ recommendation }}</li>
+        {% endfor %}
+      </ol>
+    </section>
+
+    <section class="section">
+      <div class="section-kicker">Budget distribution</div>
+      <h2>Распределение бюджета по топ-фразам</h2>
+      <div class="bars">
+        {% for item in top_keywords[:10] %}
+          {% set spending = item.get("spending", 0) | float %}
+          {% set bar_width = (spending / max_spending * 100) if max_spending > 0 else 0 %}
+          <div class="bar">
+            <div class="bar-label">{{ item.get("phrase", "") }}</div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width: {{ "%.1f" | format(bar_width) }}%;"></div>
+            </div>
+            <div class="bar-value number">{{ spending | format_number }} руб.</div>
+          </div>
+        {% else %}
+          <p class="muted">Нет данных для распределения бюджета.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-kicker">Disclaimer</div>
+      <h2>Ограничения прогноза</h2>
+      <div class="disclaimer">
+        <p>{{ report.get("disclaimer", "") }}</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

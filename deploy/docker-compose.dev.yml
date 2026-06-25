@@ -1,0 +1,38 @@
+services:
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: ["sh", "-c", "pip install --no-cache-dir -r requirements.txt && uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --reload"]
+    ports:
+      - "8000:8000"
+    environment:
+      MOCK_YANDEX: "true"
+      APP_ENV: dev
+      LOG_LEVEL: DEBUG
+    volumes:
+      - ../backend:/app
+      - dev_data:/app/data
+
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: ["sh", "-c", "pip install --no-cache-dir -r requirements.txt && python -m arq app.worker.arq_app.WorkerSettings"]
+    environment:
+      MOCK_YANDEX: "true"
+      APP_ENV: dev
+    volumes:
+      - ../backend:/app
+      - dev_data:/app/data
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  caddy:
+    profiles:
+      - prod
+
+volumes:
+  dev_data:
