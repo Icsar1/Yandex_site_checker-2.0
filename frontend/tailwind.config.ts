@@ -11,6 +11,12 @@ const config = {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        brand: {
+          blue: "#5A96EF",
+          gold: "#F0C555",
+          lightblue: "#DCF2FF",
+          darkblue: "#547DB9",
+        },
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
@@ -36,13 +42,17 @@ const config = {
           foreground: "hsl(var(--card-foreground))",
         },
       },
+      fontFamily: {
+        forum: ["Forum", "Georgia", "serif"],
+        montserrat: ["Montserrat", "ui-sans-serif", "sans-serif"],
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
       boxShadow: {
-        panel: "0 18px 50px rgba(15, 23, 42, 0.08)",
+        panel: "0 18px 50px rgba(90, 150, 239, 0.12)",
       },
     },
   },
