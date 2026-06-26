@@ -1,20 +1,28 @@
 .env
+# Runtime data — never commit
 data/
-!data/
-data/*
+backend/data/
 !data/.gitkeep
 *.sqlite*
+*.db
 storage_state.json
+# Agent task tracking
+.claude/
+backend/.claude/
+windows-patch.py
+# Python artifacts
 __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
+# Build outputs
 dist/
 build/
 node_modules/
 frontend/dist/
 .venv/
 venv/
+# Logs
 *.log
 .vite/
 vite-dev.log
