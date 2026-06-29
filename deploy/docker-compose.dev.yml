@@ -7,7 +7,6 @@ services:
     ports:
       - "8000:8000"
     environment:
-      MOCK_YANDEX: "true"
       APP_ENV: dev
       LOG_LEVEL: DEBUG
     volumes:
@@ -20,7 +19,6 @@ services:
       dockerfile: Dockerfile
     command: ["sh", "-c", "pip install --no-cache-dir -r requirements.txt && python -m arq app.worker.arq_app.WorkerSettings"]
     environment:
-      MOCK_YANDEX: "true"
       APP_ENV: dev
     volumes:
       - ../backend:/app
