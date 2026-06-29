@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class TaskStatus(str, Enum):
@@ -29,10 +29,32 @@ class TaskSource(str, Enum):
     manual_xls = "manual_xls"
 
 
+class MaskRequest(BaseModel):
+    niche: str = Field(min_length=1, max_length=300)
+
+
+class MaskResponse(BaseModel):
+    masks: list[str]
+
+
 class TaskCreate(BaseModel):
     niche: str = Field(min_length=1)
     region_ids: list[int] = Field(min_length=1)
     contact: str | None = None
+    masks: list[str] | None = None
+
+    @field_validator("masks", mode="before")
+    @classmethod
+    def clean_masks(cls, v):
+        if v is None:
+            return None
+        cleaned: dict = {}
+        for m in v:
+            m = str(m).strip()[:100]
+            if m:
+                cleaned[m] = None
+        result = list(cleaned.keys())[:20]
+        return result or None
 
 
 class TaskResponse(BaseModel):
@@ -47,6 +69,7 @@ class TaskResponse(BaseModel):
     error_class: str | None
     error_message: str | None
     suggested_niche: str | None = None
+    search_masks: list[str] | None = None
     download_url: str | None
     source: TaskSource
     created_at: str

@@ -59,6 +59,20 @@ REPORT_JSON_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+MASKS_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "masks": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1,
+            "maxItems": 10,
+        }
+    },
+    "required": ["masks"],
+    "additionalProperties": False,
+}
+
 _SIGNIFICANT_STOP_WORDS = {
     "a",
     "an",
@@ -97,6 +111,82 @@ _SIGNIFICANT_STOP_WORDS = {
     "со",
     "у",
 }
+
+
+async def generate_search_masks(
+    niche: str,
+    base_url: str,
+    api_key: str,
+    folder_id: str,
+    model: str | None = None,
+    temperature: float = 0.4,
+    timeout: int = 30,
+    max_masks: int = 8,
+) -> list[str]:
+    if not niche or not niche.strip():
+        return []
+    selected_model = model or f"gpt://{folder_id}/yandexgpt/latest"
+    system_prompt = (
+        "Ты специалист по контекстной рекламе Яндекс Директ. "
+        "Задача: придумать поисковые МАСКИ для сбора семантического ядра. "
+        "Маска — короткое ключевое словосочетание (1-3 слова), которое затем "
+        "будет расширено через Яндекс Wordstat до полного списка ключевых фраз. "
+        "\n\n"
+        "Собери маски РАЗНЫХ типов:\n"
+        "1. Горячие — синоним ниши + купить/заказать/под ключ (если уместно)\n"
+        "2. Ценовые — синоним + цена/стоимость/смета/расчёт\n"
+        "3. Синонимы — все альтернативные названия услуги или товара\n"
+        "4. Типы объектов — конкретные подвиды и разновидности\n"
+        "5. Смежные формулировки — как аудитория описывает проблему/потребность\n"
+        "\n"
+        "Требования:\n"
+        "- 1-3 слова каждая маска\n"
+        "- строчными буквами, на русском языке\n"
+        "- НЕ повторять дословно исходную фразу пользователя\n"
+        "- маски должны быть достаточно широкими для Wordstat (не слишком узкими)\n"
+        "- верни ТОЛЬКО JSON согласно схеме, без пояснений"
+    )
+    user_prompt = f"Ниша: {niche.strip()}"
+    payload = {
+        "model": selected_model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": temperature,
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "search_masks",
+                "strict": True,
+                "schema": MASKS_JSON_SCHEMA,
+            },
+        },
+    }
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    headers = {
+        "Authorization": f"Api-Key {api_key}",
+        "x-folder-id": folder_id,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+        content = _extract_message_content(response.json())
+        parsed = content if isinstance(content, dict) else json.loads(content)
+        raw_masks = parsed.get("masks", [])
+    except Exception:
+        return []
+    seen: set[str] = set()
+    result: list[str] = []
+    for m in raw_masks:
+        m = str(m).strip().lower()
+        if m and m not in seen:
+            seen.add(m)
+            result.append(m)
+        if len(result) >= max_masks:
+            break
+    return result
 
 
 def compute_forecast_aggregates(forecast: list[dict], keywords: list[dict]) -> dict:

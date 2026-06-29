@@ -2,7 +2,22 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.ai_mock import generate_report_mock
+from app.services.ai_mock import generate_report_mock, generate_search_masks_mock
+
+
+@pytest.mark.asyncio
+async def test_generate_search_masks_mock_basic() -> None:
+    result = await generate_search_masks_mock("Архитектурное проектирование домов")
+
+    assert len(result) >= 2
+    assert all(isinstance(mask, str) and mask for mask in result)
+
+
+@pytest.mark.asyncio
+async def test_generate_search_masks_mock_empty() -> None:
+    result = await generate_search_masks_mock("   ")
+
+    assert result == []
 
 
 @pytest.mark.asyncio

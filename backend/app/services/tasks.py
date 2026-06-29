@@ -43,6 +43,11 @@ def row_to_task(row: aiosqlite.Row | None) -> dict[str, Any] | None:
         task["region_ids"] = json.loads(task.get("region_ids") or "[]")
     except json.JSONDecodeError:
         task["region_ids"] = []
+    try:
+        raw = task.get("search_masks")
+        task["search_masks"] = json.loads(raw) if raw else None
+    except (json.JSONDecodeError, TypeError):
+        task["search_masks"] = None
     task["progress_pct"] = int(task.get("progress_pct") or 0)
     return task
 
@@ -56,13 +61,14 @@ def can_transition(current_status: TaskStatus, new_status: TaskStatus) -> bool:
 
 async def create_task(db_path: str, data: TaskCreate) -> str:
     task_id = str(uuid4())
-    region_label = ", ".join(str(region_id) for region_id in data.region_ids)
+    region_label = ", ".join(str(r) for r in data.region_ids)
+    search_masks_json = json.dumps(data.masks, ensure_ascii=False) if data.masks else None
 
     async with get_db(db_path) as db:
         await db.execute(
             """
-            INSERT INTO tasks (id, niche, region_ids, region_label, contact)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO tasks (id, niche, region_ids, region_label, contact, search_masks)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 task_id,
@@ -70,6 +76,7 @@ async def create_task(db_path: str, data: TaskCreate) -> str:
                 json.dumps(data.region_ids),
                 region_label,
                 data.contact,
+                search_masks_json,
             ),
         )
         await db.commit()

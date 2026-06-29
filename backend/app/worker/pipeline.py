@@ -146,12 +146,19 @@ async def _run_task_pipeline_steps(task_id: str, settings: Settings) -> None:
 
     niche = str(task["niche"])
     region_ids = list(task.get("region_ids") or [])
+    search_masks = [m for m in (task.get("search_masks") or []) if m and m.strip()]
     if not region_ids:
         raise PermanentError("Task has no region_ids")
     region_id = int(region_ids[0])
     region = str(task.get("region_label") or region_id)
 
-    keywords = await _collect_keywords(task_id, settings, niche, region_ids)
+    keywords = await _collect_keywords(
+        task_id,
+        settings,
+        niche,
+        region_ids,
+        search_masks=search_masks,
+    )
     if keywords is None:
         return
 
@@ -197,6 +204,7 @@ async def _collect_keywords(
     settings: Settings,
     niche: str,
     region_ids: list[int],
+    search_masks: list[str] | None = None,
 ) -> list[dict] | None:
     keywords = await load_artifact(settings.DATABASE_PATH, task_id, "keywords")
     if keywords is not None:
@@ -232,22 +240,34 @@ async def _collect_keywords(
             folder_id=settings.WORDSTAT_FOLDER_ID,
         )
     )
-    try:
-        raw_keywords = await client.top_requests(niche, region_ids)
-    except httpx.HTTPStatusError as exc:
-        raise _classify_http_status_error(exc) from exc
-    except httpx.RequestError as exc:
-        raise TransientError(str(exc)) from exc
-    except RuntimeError as exc:
-        classified = _classify_runtime_error(exc)
-        if classified is not None:
-            raise classified from exc
-        raise
+    masks = [m for m in (search_masks or []) if m and m.strip()] or [niche]
+    raw_keywords: list[dict[str, int | str]] = []
+    first_error: PipelineError | None = None
+    for mask in masks:
+        try:
+            chunk = await client.top_requests(mask, region_ids)
+            raw_keywords.extend(chunk)
+        except httpx.HTTPStatusError as exc:
+            err = _classify_http_status_error(exc)
+            if first_error is None:
+                first_error = err
+        except httpx.RequestError as exc:
+            if first_error is None:
+                first_error = TransientError(str(exc))
+        except RuntimeError as exc:
+            classified = _classify_runtime_error(exc)
+            if classified is not None and first_error is None:
+                first_error = classified
+            elif classified is None:
+                raise
+    if not raw_keywords and first_error is not None:
+        raise first_error
+    niche_context = " ".join(masks)
     selected = select_keywords(
         raw_keywords,
         min_freq=settings.WORDSTAT_MIN_FREQ,
         max_keywords=settings.MAX_KEYWORDS,
-        niche=niche,
+        niche=niche_context,
     )
     if not selected:
         suggestion = await suggest_correction(niche)

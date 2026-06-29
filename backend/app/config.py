@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     YANDEX_GPT_MODEL: str = ""
     YANDEX_GPT_TEMPERATURE: float = 0.3
     YANDEX_GPT_TIMEOUT_S: int = 60
+    NICHE_MASKS_MAX: int = 8
     ADMIN_PASSWORD: SecretStr = SecretStr("")
     SESSION_SECRET: SecretStr = SecretStr("")
     SESSION_TTL_SECONDS: int = 86400

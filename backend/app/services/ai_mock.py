@@ -3,6 +3,29 @@ from __future__ import annotations
 from app.services.ai import compute_forecast_aggregates
 
 
+async def generate_search_masks_mock(niche: str, max_masks: int = 8) -> list[str]:
+    if not niche or not niche.strip():
+        return []
+    words = [w.lower() for w in niche.strip().split() if len(w) > 2]
+    masks: list[str] = []
+    if words:
+        masks.append(" ".join(words[:2]))
+    if len(words) > 2:
+        masks.append(" ".join(words[1:3]))
+    if len(words) > 3:
+        masks.append(" ".join(words[2:4]))
+    masks.append(words[0] if words else niche.lower())
+    seen: set[str] = set()
+    result: list[str] = []
+    for m in masks:
+        if m and m not in seen:
+            seen.add(m)
+            result.append(m)
+        if len(result) >= max_masks:
+            break
+    return result or [niche.lower()]
+
+
 async def generate_report_mock(
     niche: str,
     region: str,

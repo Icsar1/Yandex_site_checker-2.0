@@ -12,6 +12,7 @@ import {
 import {
   ApiError,
   createTask,
+  generateMasks,
   getTask,
   type Region,
   type TaskResponse,
@@ -31,7 +32,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useProgress } from "@/hooks/useProgress";
 
-type LandingState = "form" | "progress" | "result";
+type LandingState = "form" | "masks" | "progress" | "result";
 
 const trustBadges = ["⚡ < 3 минут", "📊 До 200 ключевых слов", "🤖 YandexGPT", "📄 PDF"];
 
@@ -53,6 +54,10 @@ export function Landing() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [terminalLoading, setTerminalLoading] = useState(false);
+  const [masks, setMasks] = useState<string[]>([]);
+  const [selectedMasks, setSelectedMasks] = useState<Set<number>>(new Set());
+  const [newMask, setNewMask] = useState("");
+  const [masksLoading, setMasksLoading] = useState(false);
 
   const { progress, error: progressError } = useProgress(taskId);
 
@@ -107,6 +112,10 @@ export function Landing() {
     setNiche("");
     setRegion(null);
     setContact("");
+    setMasks([]);
+    setSelectedMasks(new Set());
+    setNewMask("");
+    setMasksLoading(false);
   };
 
   const retryCurrent = () => {
@@ -118,32 +127,48 @@ export function Landing() {
   };
 
   const searchSuggested = async (suggested: string) => {
-    const regionId = region?.id ?? task?.region_ids?.[0];
-
-    if (!regionId) {
+    if (!region?.id && !task?.region_ids?.[0]) {
       setFormError("Выберите регион.");
       setView("form");
       return;
     }
 
+    setMasksLoading(true);
     setSubmitting(true);
     setFormError(null);
     try {
-      const created = await createTask({
-        niche: suggested,
-        region_ids: [regionId],
-        contact: contact.trim() || undefined,
-      });
+      const result = await generateMasks(suggested);
 
       setNiche(suggested);
-      setTaskId(created.task_id);
-      setTask(null);
-      setView("progress");
-    } catch (caught) {
-      setFormError(initialErrorMessage(caught));
-      setView("form");
+      setMasks(result.masks);
+      setSelectedMasks(new Set(result.masks.map((_, i) => i)));
+      setView("masks");
+    } catch {
+      const regionId = region?.id ?? task?.region_ids?.[0];
+
+      if (!regionId) {
+        setView("form");
+        return;
+      }
+
+      try {
+        const created = await createTask({
+          niche: suggested,
+          region_ids: [regionId],
+          contact: contact.trim() || undefined,
+        });
+
+        setNiche(suggested);
+        setTaskId(created.task_id);
+        setTask(null);
+        setView("progress");
+      } catch (caught) {
+        setFormError(initialErrorMessage(caught));
+        setView("form");
+      }
     } finally {
       setSubmitting(false);
+      setMasksLoading(false);
     }
   };
 
@@ -161,22 +186,93 @@ export function Landing() {
       return;
     }
 
+    setMasksLoading(true);
     setSubmitting(true);
     try {
-      const createdTask = await createTask({
-        niche: niche.trim(),
-        region_ids: [region.id],
-        contact: contact.trim() || undefined,
-      });
+      const result = await generateMasks(niche.trim());
 
-      setTaskId(createdTask.task_id);
-      setTask(null);
-      setView("progress");
+      setMasks(result.masks);
+      setSelectedMasks(new Set(result.masks.map((_, i) => i)));
+      setView("masks");
     } catch (caught) {
       setFormError(initialErrorMessage(caught));
     } finally {
       setSubmitting(false);
+      setMasksLoading(false);
     }
+  };
+
+  const launchSearch = async () => {
+    if (!region) {
+      return;
+    }
+
+    const selected = masks.filter((_, i) => selectedMasks.has(i));
+    const masksToUse = selected.length > 0 ? selected : masks;
+
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const created = await createTask({
+        niche: niche.trim(),
+        region_ids: [region.id],
+        contact: contact.trim() || undefined,
+        masks: masksToUse,
+      });
+
+      setTaskId(created.task_id);
+      setTask(null);
+      setView("progress");
+    } catch (caught) {
+      setFormError(initialErrorMessage(caught));
+      setView("form");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const toggleMask = (i: number) => {
+    setSelectedMasks((prev) => {
+      const next = new Set(prev);
+
+      if (next.has(i)) {
+        next.delete(i);
+      } else {
+        next.add(i);
+      }
+
+      return next;
+    });
+  };
+
+  const removeMask = (i: number) => {
+    setMasks((prev) => prev.filter((_, idx) => idx !== i));
+    setSelectedMasks((prev) => {
+      const next = new Set<number>();
+
+      prev.forEach((idx) => {
+        if (idx < i) {
+          next.add(idx);
+        } else if (idx > i) {
+          next.add(idx - 1);
+        }
+      });
+
+      return next;
+    });
+  };
+
+  const addMask = () => {
+    const m = newMask.trim().toLowerCase();
+
+    if (!m || masks.includes(m)) {
+      setNewMask("");
+      return;
+    }
+
+    setMasks((prev) => [...prev, m]);
+    setSelectedMasks((prev) => new Set([...prev, masks.length]));
+    setNewMask("");
   };
 
   const failedMessage = useMemo(() => {
@@ -245,11 +341,13 @@ export function Landing() {
                   className="text-2xl"
                   style={{ fontFamily: "Forum, Georgia, serif", color: "#547DB9" }}
                 >
-                  {view === "form" ? "Рассчитать бюджет" : "Ваш расчёт"}
+                  {view === "form" ? "Рассчитать бюджет" : view === "masks" ? "Поисковые маски" : "Ваш расчёт"}
                 </CardTitle>
                 <CardDescription>
                   {view === "form"
                     ? "Заполните нишу и регион, остальное сделает сервис."
+                    : view === "masks"
+                    ? "Выберите маски для поиска ключевых слов."
                     : "Статус обновляется автоматически."}
                 </CardDescription>
               </CardHeader>
@@ -294,17 +392,102 @@ export function Landing() {
                       disabled={!canSubmit}
                       style={{ background: "#5A96EF" }}
                     >
-                      {submitting ? (
+                      {submitting || masksLoading ? (
                         <Loader2 className="h-5 w-5 animate-spin" />
                       ) : (
-                        <ArrowRight className="h-5 w-5" />
+                        <Sparkles className="h-5 w-5" />
                       )}
-                      Рассчитать медиаплан
+                      Подобрать маски
                     </Button>
                     <p className="text-center text-sm text-muted-foreground">
                       Бесплатно. Без регистрации.
                     </p>
                   </form>
+                ) : null}
+
+                {view === "masks" ? (
+                  <div className="space-y-4">
+                    <div>
+                      <p className="mb-3 text-sm text-muted-foreground">
+                        ИИ подобрал поисковые маски для ниши «{niche}». Снимите галочку чтобы исключить маску или добавьте свою.
+                      </p>
+                      <div className="space-y-2">
+                        {masks.map((mask, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-2 rounded-md border px-3 py-2"
+                            style={{
+                              borderColor: "#5A96EF33",
+                              background: selectedMasks.has(i) ? "#DCF2FF" : "#f5f5f5",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedMasks.has(i)}
+                              onChange={() => toggleMask(i)}
+                              className="h-4 w-4 shrink-0 accent-[#5A96EF]"
+                            />
+                            <span className="flex-1 text-sm">{mask}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeMask(i)}
+                              className="px-1 text-xs text-muted-foreground hover:text-red-500"
+                              aria-label="Удалить"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        value={newMask}
+                        onChange={(event) => setNewMask(event.target.value)}
+                        placeholder="Добавить маску..."
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            addMask();
+                          }
+                        }}
+                        style={{ borderColor: "#5A96EF55" }}
+                      />
+                      <Button type="button" variant="outline" onClick={addMask} disabled={!newMask.trim()}>
+                        +
+                      </Button>
+                    </div>
+                    {formError ? (
+                      <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                        {formError}
+                      </p>
+                    ) : null}
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setView("form")}
+                        disabled={submitting}
+                        className="flex-1"
+                      >
+                        ← Назад
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={launchSearch}
+                        disabled={submitting || selectedMasks.size === 0}
+                        className="flex-1 font-semibold text-white"
+                        style={{ background: "#5A96EF" }}
+                      >
+                        {submitting ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <ArrowRight className="h-4 w-4" />
+                        )}
+                        Запустить поиск
+                      </Button>
+                    </div>
+                  </div>
                 ) : null}
 
                 {view === "progress" ? (

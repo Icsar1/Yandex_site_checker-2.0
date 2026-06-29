@@ -9,7 +9,16 @@ from fastapi.responses import FileResponse
 
 from app.config import Settings, get_settings
 from app.db.database import get_db
-from app.models.task import ProgressResponse, TaskCreate, TaskResponse, TaskStatus
+from app.models.task import (
+    MaskRequest,
+    MaskResponse,
+    ProgressResponse,
+    TaskCreate,
+    TaskResponse,
+    TaskStatus,
+)
+from app.services.ai import generate_search_masks
+from app.services.ai_mock import generate_search_masks_mock
 from app.services.progress import build_progress_response, get_progress
 from app.services.tasks import (
     add_task_event,
@@ -94,6 +103,52 @@ async def _build_task_response(
     return TaskResponse(**task, download_url=download_url)
 
 
+@router.get("/regions")
+async def get_regions(request: Request, q: str | None = None) -> list[dict[str, int | str]]:
+    settings = _get_request_settings(request)
+    client = _build_wordstat_client(settings)
+
+    try:
+        regions = await client.get_regions_tree()
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+    query = (q or "").casefold().strip()
+    filtered = [
+        {"id": int(region["id"]), "name": str(region["name"])}
+        for region in regions
+        if not query or query in str(region.get("name") or "").casefold()
+    ]
+    return filtered[:20]
+
+
+@router.post("/masks", response_model=MaskResponse)
+async def generate_masks(payload: MaskRequest, request: Request) -> MaskResponse:
+    settings = _get_request_settings(request)
+    if settings.MOCK_YANDEX:
+        masks = await generate_search_masks_mock(
+            payload.niche,
+            max_masks=settings.NICHE_MASKS_MAX,
+        )
+    else:
+        masks = await generate_search_masks(
+            niche=payload.niche,
+            base_url=settings.YANDEX_GPT_BASE_URL,
+            api_key=settings.YANDEX_GPT_API_KEY.get_secret_value(),
+            folder_id=settings.YANDEX_GPT_FOLDER_ID,
+            model=settings.YANDEX_GPT_MODEL or None,
+            temperature=settings.YANDEX_GPT_TEMPERATURE,
+            timeout=settings.YANDEX_GPT_TIMEOUT_S,
+            max_masks=settings.NICHE_MASKS_MAX,
+        )
+    if not masks:
+        masks = [payload.niche.strip().lower()]
+    return MaskResponse(masks=masks)
+
+
 @router.post("/tasks", status_code=status.HTTP_201_CREATED)
 async def create_public_task(
     payload: TaskCreate,
@@ -120,28 +175,6 @@ async def create_public_task(
         import logging
         logging.getLogger(__name__).error("Failed to enqueue task %s: %s", task_id, exc)
     return {"task_id": task_id, "status": TaskStatus.queued.value}
-
-
-@router.get("/regions")
-async def get_regions(request: Request, q: str | None = None) -> list[dict[str, int | str]]:
-    settings = _get_request_settings(request)
-    client = _build_wordstat_client(settings)
-
-    try:
-        regions = await client.get_regions_tree()
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
-        ) from exc
-
-    query = (q or "").casefold().strip()
-    filtered = [
-        {"id": int(region["id"]), "name": str(region["name"])}
-        for region in regions
-        if not query or query in str(region.get("name") or "").casefold()
-    ]
-    return filtered[:20]
 
 
 @router.get("/tasks/{task_id}", response_model=TaskResponse)
