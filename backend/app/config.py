@@ -65,7 +65,12 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT: int = 5
     PUBLIC_RATE_LIMIT: int = 10
     PDF_TOKEN_TTL_SECONDS: int = 604800
-    PDF_OUTPUT_DIR: str = "data/pdf"
+    PDF_OUTPUT_DIR: str = str(_ROOT / "data" / "pdf")
+
+    @field_validator("PDF_OUTPUT_DIR", mode="after")
+    @classmethod
+    def resolve_pdf_dir(cls, v: str) -> str:
+        return _abs(v)
     UPLOAD_MAX_BYTES: int = 5242880
     PROGRESS_TTL_SECONDS: int = 3600
     KPI_MEDIAN_SECONDS: int = 180

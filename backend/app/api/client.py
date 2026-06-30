@@ -78,9 +78,19 @@ async def _get_pdf_path(db_path: str, task_id: str, output_dir: str) -> Path:
         )
         row = await cursor.fetchone()
 
+    output = Path(output_dir)
     if row is not None and row["path"]:
-        return Path(row["path"])
-    return Path(output_dir) / f"{task_id}.pdf"
+        p = Path(row["path"])
+        if p.is_absolute():
+            return p
+        # Legacy: relative paths were stored when worker ran from backend/ dir.
+        # output_dir is now absolute (project_root/data/pdf), so project_root = output.parents[1].
+        project_root = output.parents[1]
+        backend_candidate = project_root / "backend" / p
+        if backend_candidate.exists():
+            return backend_candidate
+        return project_root / p
+    return output / f"{task_id}.pdf"
 
 
 async def _build_task_response(
