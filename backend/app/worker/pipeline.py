@@ -14,6 +14,8 @@ from app.db.database import get_db
 from app.models.task import TERMINAL_STATUSES, TaskStatus
 from app.services.ai import generate_report
 from app.services.ai_mock import generate_report_mock
+from app.services.allocation import AllocationConfig
+from app.services.keywords import _RU_STOPWORDS, normalize_phrase
 from app.services.direct import (
     CaptchaOrAuthError,
     DirectError,
@@ -418,9 +420,16 @@ async def _build_report(
         settings.PROGRESS_TTL_SECONDS,
     )
 
+    alloc_cfg = AllocationConfig.from_settings(settings)
+    geo_tokens = {
+        tok for tok in normalize_phrase(region).split()
+        if tok not in _RU_STOPWORDS and len(tok) >= 3
+    }
+
     try:
         result = (
-            await generate_report_mock(niche, region, keywords, forecast)
+            await generate_report_mock(niche, region, keywords, forecast,
+                                       geo_tokens=geo_tokens, config=alloc_cfg)
             if settings.MOCK_YANDEX
             else await generate_report(
                 niche,
@@ -433,6 +442,8 @@ async def _build_report(
                 model=settings.YANDEX_GPT_MODEL,
                 temperature=settings.YANDEX_GPT_TEMPERATURE,
                 timeout=settings.YANDEX_GPT_TIMEOUT_S,
+                geo_tokens=geo_tokens,
+                config=alloc_cfg,
             )
         )
     except httpx.HTTPStatusError as exc:

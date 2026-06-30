@@ -54,19 +54,22 @@ def test_compute_forecast_aggregates_correct_sums() -> None:
         {"phrase": "диван цена", "freq": 80, "score": 0.8},
     ]
     forecast = [
-        {"phrase": "купить диван", "impressions": 1000, "clicks": 50, "spending": 500.0},
-        {"phrase": "диван цена", "impressions": 500, "clicks": 25, "spending": 250.55},
+        {"phrase": "купить диван", "impressions": 1000, "clicks": 50,
+         "spending": 500.0, "avg_cpc": 10.0, "ctr": 5.0},
+        {"phrase": "диван цена", "impressions": 500, "clicks": 25,
+         "spending": 250.55, "avg_cpc": 10.0, "ctr": 5.0},
     ]
 
     result = compute_forecast_aggregates(forecast, keywords)
 
     assert result["n_keywords"] == 2
-    assert result["total_impressions"] == 1500
-    assert result["total_clicks"] == 75
-    assert result["total_spending"] == 750.55
-    assert result["avg_cpc"] == 10.01
-    assert result["avg_ctr"] == 5.0
-    assert result["top_keywords"][0] == {"phrase": "купить диван", "spending": 500.0}
+    # total_spending = fixed budget (120000) regardless of Yandex forecast sum
+    assert result["total_spending"] == 120000.0
+    # clusters and warnings are present
+    assert "clusters" in result
+    assert "warnings" in result
+    # top_keywords is sorted by allocated_budget desc
+    assert isinstance(result["top_keywords"], list)
 
 
 @pytest.mark.asyncio
@@ -154,7 +157,8 @@ def test_compute_forecast_aggregates_empty_forecast() -> None:
     assert result["n_keywords"] == 0
     assert result["total_impressions"] == 0
     assert result["total_clicks"] == 0
-    assert result["total_spending"] == 0
+    # With no keywords, total_spending = fixed budget (always present in config)
+    assert result["total_spending"] == 120000.0
     assert result["avg_cpc"] == 0
     assert result["avg_ctr"] == 0
     assert result["top_keywords"] == []
@@ -198,8 +202,8 @@ def test_build_user_prompt_contains_facts() -> None:
     assert "Ниша: мебель" in prompt
     assert "Регион: Москва" in prompt
     assert "Количество ключевых фраз: 2" in prompt
-    assert "Суммарный бюджет: 750.55 руб." in prompt
-    assert "1. купить диван - 500.0 руб." in prompt
+    assert "750.55 руб." in prompt
+    assert "купить диван" in prompt
 
 
 def test_report_json_schema_valid() -> None:

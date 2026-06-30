@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.services.ai import compute_forecast_aggregates
+from app.services.allocation import AllocationConfig
 
 
 async def generate_search_masks_mock(niche: str, max_masks: int = 8) -> list[str]:
@@ -31,32 +32,34 @@ async def generate_report_mock(
     region: str,
     keywords: list[dict],
     forecast: list[dict],
+    geo_tokens: set[str] | None = None,
+    config: AllocationConfig | None = None,
 ) -> dict:
-    aggregates = compute_forecast_aggregates(forecast, keywords)
+    aggregates = compute_forecast_aggregates(forecast, keywords, niche, geo_tokens, config)
     report = {
         "summary": (
             f"Для ниши «{niche}» в регионе «{region}» подобрано "
-            f"{aggregates['n_keywords']} ключевых фраз. Прогнозный бюджет "
-            f"составляет {aggregates['total_spending']} руб. при ожидаемом "
+            f"{aggregates['n_keywords']} ключевых фраз. Распределяемый бюджет "
+            f"составляет {aggregates['total_spending']:.0f} руб. при ожидаемом "
             f"объёме {aggregates['total_impressions']} показов.\n\n"
-            "Отчёт сформирован на основе рассчитанных прогнозных данных: "
-            "числа не пересчитываются AI-модулем и используются только в готовом виде."
+            "Бюджет распределён стратегически: центр тяжести (самые узкие кластеры) "
+            "получает приоритет; голый базис ограничен до 10% бюджета."
         ),
         "groups": _build_mock_groups(niche, aggregates),
         "conclusions": [
             (
-                f"Прогноз охватывает {aggregates['n_keywords']} ключевых фраз "
+                f"Медиаплан охватывает {aggregates['n_keywords']} ключевых фраз "
                 f"в регионе «{region}»."
             ),
             (
-                f"Суммарный прогнозный бюджет составляет "
-                f"{aggregates['total_spending']} руб."
+                f"Распределяемый бюджет: {aggregates['total_spending']:.0f} руб."
             ),
             (
-                f"Ожидаемые клики: {aggregates['total_clicks']}, средний CPC: "
+                f"Ожидаемые клики: {aggregates['total_clicks']:.0f}, средний CPC: "
                 f"{aggregates['avg_cpc']} руб., средний CTR: "
                 f"{aggregates['avg_ctr']}%."
             ),
+            *([w for w in aggregates.get("warnings", [])]),
         ],
         "recommendations": [
             "Запускать кампанию с разделением ключевых фраз по смысловым группам.",

@@ -156,6 +156,10 @@ async def generate_masks(payload: MaskRequest, request: Request) -> MaskResponse
         )
     if not masks:
         masks = [payload.niche.strip().lower()]
+    # Strip AI category prefixes like ".горячие. " regardless of what generate_* returned
+    _pfx = __import__("re").compile(r"^\.[^.]+\.\s*")
+    masks = [_pfx.sub("", m).strip().lower() for m in masks]
+    masks = [m for m in masks if m] or [payload.niche.strip().lower()]
     return MaskResponse(masks=masks)
 
 

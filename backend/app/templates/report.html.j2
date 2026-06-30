@@ -347,6 +347,82 @@
       font-size: 11px;
     }
 
+    .warning-banner {
+      padding: 12px 16px;
+      border: 1px solid #FCD34D;
+      border-left: 5px solid #F59E0B;
+      border-radius: 8px;
+      background: #FFFBEB;
+      color: #92400E;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .cluster-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 12px;
+    }
+
+    .cluster-table th,
+    .cluster-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--hairline);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .cluster-table th {
+      color: var(--muted);
+      background: var(--surface);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .cluster-table tbody tr:last-child td { border-bottom: 0; }
+
+    .badge-cog {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #DCFCE7;
+      color: #15803D;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .badge-type {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .badge-type-transactional { background: #DBEAFE; color: #1E40AF; }
+    .badge-type-characteristic { background: #F3E8FF; color: #7E22CE; }
+    .badge-type-general { background: #F3F4F6; color: #6B7280; }
+
+    .minus-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .minus-chip {
+      display: inline-block;
+      padding: 1px 5px;
+      border: 1px solid #FCA5A5;
+      border-radius: 4px;
+      background: #FEF2F2;
+      color: #991B1B;
+      font-size: 10px;
+    }
+
     @media print {
       html,
       body {
@@ -458,7 +534,10 @@
         <tbody>
           {% for item in top_keywords[:10] %}
             <tr>
-              <td>{{ item.get("phrase", "") }}</td>
+              <td>
+                {{ item.get("phrase", "") }}
+                {% if item.get("is_center_of_gravity") %}<span class="badge-cog">⊙ ЦТ</span>{% endif %}
+              </td>
               <td>{{ number_cell(item.get("impressions")) }}</td>
               <td>{{ number_cell(item.get("clicks")) }}</td>
               <td>{{ number_cell(item.get("spending"), " руб.") }}</td>
@@ -510,6 +589,60 @@
           <li>{{ recommendation }}</li>
         {% endfor %}
       </ol>
+    </section>
+
+    {% if aggregates.get("warnings") %}
+    <section class="section">
+      <div class="section-kicker">Warnings</div>
+      <h2>Предупреждения</h2>
+      {% for w in aggregates.get("warnings", []) %}
+        <div class="warning-banner">{{ w }}</div>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    <section class="section">
+      <div class="section-kicker">Campaign structure</div>
+      <h2>Структура кампании по кластерам</h2>
+      <table class="cluster-table">
+        <thead>
+          <tr>
+            <th>Кластер</th>
+            <th>Тип</th>
+            <th>Фраз</th>
+            <th>Бюджет</th>
+            <th>Доля</th>
+            <th>Минус-слова</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for cluster in aggregates.get("clusters", []) %}
+            <tr>
+              <td>
+                {{ cluster.get("title", "") }}
+                {% if cluster.get("is_center_of_gravity") %}<span class="badge-cog">⊙ ЦТ</span>{% endif %}
+              </td>
+              <td>
+                <span class="badge-type badge-type-{{ cluster.get('type', 'general') }}">
+                  {{ cluster.get("type", "") }}
+                </span>
+              </td>
+              <td class="number">{{ cluster.get("n_keys", 0) }}</td>
+              <td class="number">{{ cluster.get("allocated_budget", 0) | format_number }} руб.</td>
+              <td class="number">{{ "%.0f" | format(cluster.get("allocated_share", 0) * 100) }}%</td>
+              <td>
+                <div class="minus-chips">
+                  {% for w in cluster.get("minus_words", [])[:8] %}
+                    <span class="minus-chip">-{{ w }}</span>
+                  {% endfor %}
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6" class="muted">Нет данных о кластерах.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </section>
 
     <section class="section">

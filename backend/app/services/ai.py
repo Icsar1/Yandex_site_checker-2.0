@@ -7,6 +7,9 @@ from typing import Any
 import httpx
 from jsonschema import ValidationError, validate
 
+from app.services.allocation import AllocationConfig, allocate_budget
+from app.services.keywords import _RU_STOPWORDS, normalize_phrase
+
 
 REPORT_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -192,29 +195,39 @@ async def generate_search_masks(
     return result
 
 
-def compute_forecast_aggregates(forecast: list[dict], keywords: list[dict]) -> dict:
-    total_impressions = sum(_to_int(item.get("impressions")) for item in forecast)
-    total_clicks = sum(_to_int(item.get("clicks")) for item in forecast)
-    total_spending = round(
-        sum(_to_float(item.get("spending")) for item in forecast),
-        2,
-    )
-    avg_cpc = round(total_spending / total_clicks, 2) if total_clicks > 0 else 0
-    avg_ctr = (
-        round(total_clicks / total_impressions * 100, 2)
-        if total_impressions > 0
-        else 0
-    )
+def compute_forecast_aggregates(
+    forecast: list[dict],
+    keywords: list[dict],
+    niche: str = "",
+    geo_tokens: set[str] | None = None,
+    config: AllocationConfig | None = None,
+) -> dict:
+    cfg = config or AllocationConfig()
+    alloc = allocate_budget(keywords, forecast, niche, geo_tokens or set(), cfg)
+
+    top_keywords = alloc["top_phrases"]
+    clusters = alloc["clusters"]
+
+    keyword_clusters = [
+        {
+            "title": c["title"].capitalize(),
+            "sample_keywords": [p["phrase"] for p in c["phrases"][:5]],
+        }
+        for c in clusters
+        if c["phrases"]
+    ][:6]
 
     return {
         "n_keywords": len(keywords),
-        "total_impressions": total_impressions,
-        "total_clicks": total_clicks,
-        "total_spending": total_spending,
-        "avg_cpc": avg_cpc,
-        "avg_ctr": avg_ctr,
-        "top_keywords": _top_keywords_by_spending(forecast),
-        "keyword_clusters": _cluster_keywords(keywords),
+        "total_impressions": int(alloc["total_impressions"]),
+        "total_clicks": alloc["total_clicks"],
+        "total_spending": alloc["total_budget"],
+        "avg_cpc": alloc["avg_cpc"],
+        "avg_ctr": alloc["avg_ctr"],
+        "top_keywords": top_keywords,
+        "keyword_clusters": keyword_clusters,
+        "clusters": clusters,
+        "warnings": alloc["warnings"],
     }
 
 
@@ -234,22 +247,29 @@ def build_system_prompt() -> str:
 
 
 def build_user_prompt(niche: str, region: str, aggregates: dict) -> str:
+    warnings_block = ""
+    if aggregates.get("warnings"):
+        warnings_block = "\nПРЕДУПРЕЖДЕНИЯ:\n" + "\n".join(aggregates["warnings"]) + "\n"
+
+    clusters_block = _format_clusters(aggregates.get("clusters", []))
+
     return (
         "=== ФАКТЫ (используй ТОЛЬКО эти числа) ===\n"
         f"Ниша: {niche}\n"
         f"Регион: {region}\n"
         f"Количество ключевых фраз: {aggregates['n_keywords']}\n"
+        f"Общий бюджет кампании: {aggregates['total_spending']} руб.\n"
         f"Суммарные показы: {aggregates['total_impressions']}\n"
         f"Суммарные клики: {aggregates['total_clicks']}\n"
-        f"Суммарный бюджет: {aggregates['total_spending']} руб.\n"
         f"Средний CPC: {aggregates['avg_cpc']} руб.\n"
         f"Средний CTR: {aggregates['avg_ctr']}%\n"
+        f"{warnings_block}"
         "\n"
         "Топ-10 ключей по бюджету:\n"
         f"{_format_top_keywords(aggregates.get('top_keywords', []))}\n"
         "\n"
-        "Кластеры ключей:\n"
-        f"{_format_keyword_clusters(aggregates.get('keyword_clusters', []))}\n"
+        "Структура кластеров кампании:\n"
+        f"{clusters_block}\n"
         "\n"
         "=== ЗАДАЧА ===\n"
         "На основе ТОЛЬКО этих фактов создай JSON-отчёт по схеме:\n"
@@ -272,8 +292,10 @@ async def generate_report(
     model: str | None = None,
     temperature: float = 0.3,
     timeout: int = 60,
+    geo_tokens: set[str] | None = None,
+    config: AllocationConfig | None = None,
 ) -> dict:
-    aggregates = compute_forecast_aggregates(forecast, keywords)
+    aggregates = compute_forecast_aggregates(forecast, keywords, niche, geo_tokens, config)
     system_prompt = build_system_prompt()
     user_prompt = build_user_prompt(niche, region, aggregates)
     selected_model = model or f"gpt://{folder_id}/yandexgpt/latest"
@@ -372,10 +394,29 @@ def _first_significant_word(phrase: str) -> str:
 def _format_top_keywords(top_keywords: list[dict]) -> str:
     if not top_keywords:
         return "- нет данных"
-    return "\n".join(
-        f"{index}. {item['phrase']} - {item['spending']} руб."
-        for index, item in enumerate(top_keywords, start=1)
-    )
+    lines = []
+    for index, item in enumerate(top_keywords, start=1):
+        cog = " [ЦТ]" if item.get("is_center_of_gravity") else ""
+        lines.append(
+            f"{index}. {item['phrase']}{cog} - {item.get('spending', 0):.0f} руб."
+        )
+    return "\n".join(lines)
+
+
+def _format_clusters(clusters: list[dict]) -> str:
+    if not clusters:
+        return "- нет данных"
+    lines = []
+    for c in clusters:
+        cog = " ★ ЦЕНТР ТЯЖЕСТИ" if c.get("is_center_of_gravity") else ""
+        minus = ", ".join(c.get("minus_words", [])[:5])
+        minus_str = f"; минус-слова: {minus}" if minus else ""
+        lines.append(
+            f"  [{c['type'].upper()}]{cog} «{c['title']}» — "
+            f"{c['n_keys']} фраз, {c['allocated_budget']:.0f} руб. "
+            f"({c['allocated_share']:.0%}){minus_str}"
+        )
+    return "\n".join(lines)
 
 
 def _format_keyword_clusters(keyword_clusters: list[dict]) -> str:

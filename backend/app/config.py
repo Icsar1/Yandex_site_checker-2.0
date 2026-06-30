@@ -74,6 +74,17 @@ class Settings(BaseSettings):
     UPLOAD_MAX_BYTES: int = 5242880
     PROGRESS_TTL_SECONDS: int = 3600
     KPI_MEDIAN_SECONDS: int = 180
+    MEDIA_PLAN_BUDGET: float = 120000.0
+    ALLOC_WEIGHT_CENTER: float = 1.0
+    ALLOC_WEIGHT_TRANSACTIONAL: float = 0.7
+    ALLOC_WEIGHT_CHARACTERISTIC: float = 0.4
+    ALLOC_WEIGHT_BROAD: float = 0.15
+    ALLOC_MAX_PHRASE_SHARE: float = 0.15
+    ALLOC_MAX_BROAD_SHARE: float = 0.10
+    ALLOC_BROAD_BID_FACTOR: float = 0.5
+    ALLOC_MIN_CLUSTER_FREQ: int = 50
+    ALLOC_MIN_CLUSTER_KEYS: int = 5
+    ALLOC_LOW_FREQ_THRESHOLD: int = 20
 
 
 def get_settings() -> Settings:
