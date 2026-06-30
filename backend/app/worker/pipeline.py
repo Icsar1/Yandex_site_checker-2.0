@@ -20,6 +20,7 @@ from app.services.direct import (
     DirectForecastClient,
     DirectTimeoutError,
 )
+from app.services.direct_api import DirectApiClient, DirectApiError
 from app.services.direct_mock import MockDirectForecastClient
 from app.services.keywords import select_keywords
 from app.services.pdf import render_pdf
@@ -321,16 +322,20 @@ async def _build_forecast(
         settings.PROGRESS_TTL_SECONDS,
     )
 
-    client = (
-        MockDirectForecastClient()
-        if settings.MOCK_YANDEX
-        else DirectForecastClient(
+    if settings.MOCK_YANDEX:
+        client: Any = MockDirectForecastClient()
+    elif settings.YANDEX_DIRECT_API_KEY.get_secret_value():
+        client = DirectApiClient(
+            api_key=settings.YANDEX_DIRECT_API_KEY.get_secret_value(),
+            login=settings.YANDEX_DIRECT_LOGIN.get_secret_value() or "",
+        )
+    else:
+        client = DirectForecastClient(
             storage_state_path=settings.DIRECT_STORAGE_STATE,
             forecast_url=settings.DIRECT_FORECAST_URL,
             headless=settings.PLAYWRIGHT_HEADLESS,
             timeout_ms=settings.DIRECT_TIMEOUT_MS,
         )
-    )
 
     async def on_batch(batch_index: int, total_batches: int) -> None:
         sub_progress = batch_index / total_batches if total_batches else 1.0
@@ -353,6 +358,8 @@ async def _build_forecast(
             )
     except CaptchaOrAuthError as exc:
         raise NeedsManualError(str(exc)) from exc
+    except DirectApiError as exc:
+        raise TransientError(str(exc)) from exc
     except DirectTimeoutError as exc:
         raise TransientError(str(exc)) from exc
     except DirectError as exc:

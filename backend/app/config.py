@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     DIRECT_TIMEOUT_MS: int = 45000
     YANDEX_DIRECT_LOGIN: SecretStr = SecretStr("")
     YANDEX_DIRECT_PASSWORD: SecretStr = SecretStr("")
+    YANDEX_DIRECT_API_KEY: SecretStr = SecretStr("")
     PLAYWRIGHT_HEADLESS: bool = True
     YANDEX_GPT_BASE_URL: str = "https://llm.api.cloud.yandex.net/v1"
     YANDEX_GPT_API_KEY: SecretStr = SecretStr("")
