@@ -2,11 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-_ROOT_ENV = str(Path(__file__).resolve().parents[2] / ".env")
+_ROOT = Path(__file__).resolve().parents[2]
+_ROOT_ENV = str(_ROOT / ".env")
+
+
+def _abs(p: str) -> str:
+    """Resolve path relative to project root if not already absolute."""
+    path = Path(p)
+    return str(path if path.is_absolute() else _ROOT / path)
 
 
 class Settings(BaseSettings):
@@ -20,7 +27,12 @@ class Settings(BaseSettings):
     DOMAIN: str = "localhost"
     MOCK_YANDEX: bool = True
     LOG_LEVEL: str = "INFO"
-    DATABASE_PATH: str = "data/tasks.db"
+    DATABASE_PATH: str = str(_ROOT / "data" / "tasks.db")
+
+    @field_validator("DATABASE_PATH", mode="after")
+    @classmethod
+    def resolve_db_path(cls, v: str) -> str:
+        return _abs(v)
     REDIS_URL: str = "redis://redis:6379/0"
     CONCURRENCY: int = 3
     ARQ_MAX_JOBS: int = 10

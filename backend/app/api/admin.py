@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 import time
 from collections import defaultdict, deque
@@ -187,6 +188,19 @@ async def retry_admin_task(
             (task_id,),
         )
         await db.commit()
+
+    try:
+        from arq import create_pool
+        from arq.connections import RedisSettings
+
+        redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
+        pool = await create_pool(redis_settings)
+        try:
+            await pool.enqueue_job("run_pipeline", task_id)
+        finally:
+            await pool.aclose()
+    except Exception as exc:
+        logging.getLogger(__name__).error("Failed to re-enqueue task %s: %s", task_id, exc)
 
     return {"task_id": task_id, "status": TaskStatus.queued.value}
 

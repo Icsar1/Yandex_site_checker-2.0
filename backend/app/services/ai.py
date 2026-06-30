@@ -177,10 +177,13 @@ async def generate_search_masks(
         raw_masks = parsed.get("masks", [])
     except Exception:
         return []
+    import re as _re
+    # Strip: "1. ", "1) ", ". ", ".category. " or "category: " prefixes from AI output
+    _junk = _re.compile(r"^(?:\.[^.]+\.|[\d]*[.):\-–]\s*|[^:]+:\s)")
     seen: set[str] = set()
     result: list[str] = []
     for m in raw_masks:
-        m = str(m).strip().lower()
+        m = _junk.sub("", str(m).strip()).strip().lower()
         if m and m not in seen:
             seen.add(m)
             result.append(m)
