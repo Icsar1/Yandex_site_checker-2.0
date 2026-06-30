@@ -61,8 +61,9 @@ async def test_mock_report_uses_real_aggregates() -> None:
         _forecast(),
     )
 
-    assert result["aggregates"]["total_spending"] == 600.0
-    assert "600.0 руб." in result["report"]["summary"]
+    # total_spending is now the fixed allocation budget (120000), not Yandex forecast sum
+    assert result["aggregates"]["total_spending"] == 120000.0
+    assert "120000" in result["report"]["summary"]
 
 
 @pytest.mark.asyncio
