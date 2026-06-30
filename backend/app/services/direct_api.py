@@ -13,7 +13,6 @@ from app.services.keywords import batch_keywords
 _API_URL = "https://api.direct.yandex.com/live/v4/json/"
 _POLL_INTERVAL_S = 3.0
 _POLL_TIMEOUT_S = 120.0
-_COST_DIVISOR = 1_000_000  # API returns cost in microrubls
 
 
 class DirectApiError(DirectError):
@@ -25,6 +24,8 @@ class DirectApiClient:
 
     Drop-in replacement for DirectForecastClient — same forecast_keywords interface.
     Requires an approved OAuth application and a valid Bearer token.
+
+    Auth: token is passed in the JSON request body ("token" field), per v4 spec.
     """
 
     def __init__(self, api_key: str, login: str = "") -> None:
@@ -33,7 +34,6 @@ class DirectApiClient:
 
     def _headers(self) -> dict[str, str]:
         headers = {
-            "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json; charset=utf-8",
             "Accept-Language": "ru",
         }
@@ -42,7 +42,13 @@ class DirectApiClient:
         return headers
 
     async def _call(self, client: httpx.AsyncClient, method: str, param: Any) -> Any:
-        body: dict[str, Any] = {"method": method, "param": param, "locale": "ru"}
+        # v4 Live: token goes in the request body, not in Authorization header
+        body: dict[str, Any] = {
+            "method": method,
+            "param": param,
+            "locale": "ru",
+            "token": self._api_key,
+        }
         response = await client.post(_API_URL, json=body, headers=self._headers())
         response.raise_for_status()
         data = response.json()
@@ -57,12 +63,12 @@ class DirectApiClient:
         if not keywords:
             return []
 
-        phrases = [{"Phrase": kw, "MinusWords": []} for kw in keywords]
+        # Phrases must be an array of strings (not objects) per v4 spec.
+        # Currency is required even though docs say it's optional.
         create_param: dict[str, Any] = {
-            "Phrases": phrases,
+            "Phrases": list(keywords),
             "GeoID": [region_id],
             "Currency": "RUB",
-            "Period": "MONTH",
         }
         if self._login:
             create_param["Login"] = self._login
@@ -74,7 +80,8 @@ class DirectApiClient:
                     f"CreateNewForecast returned unexpected type: {type(forecast_id).__name__}"
                 )
             await self._wait_for_forecast(client, forecast_id)
-            data = await self._call(client, "GetForecast", {"ForecastID": forecast_id})
+            # GetForecast takes the ForecastID as a scalar integer param, not an object
+            data = await self._call(client, "GetForecast", forecast_id)
 
         return _parse_forecast_data(data)
 
@@ -91,8 +98,8 @@ class DirectApiClient:
                 status = entry.get("StatusForecast", "")
                 if status == "Done":
                     return
-                if status == "Error":
-                    raise DirectApiError(f"Forecast {forecast_id} finished with status Error")
+                if status == "Failed":  # API uses "Failed", not "Error"
+                    raise DirectApiError(f"Forecast {forecast_id} finished with status Failed")
         raise DirectApiError(
             f"Forecast {forecast_id} did not complete within {_POLL_TIMEOUT_S:.0f}s"
         )
@@ -118,9 +125,22 @@ class DirectApiClient:
 
 
 def _parse_forecast_data(data: Any) -> list[dict]:
+    """Parse GetForecast response into pipeline-compatible rows.
+
+    Real API response structure (verified against live v4):
+        data.Phrases[]: {Phrase, Shows, Clicks, FirstPlaceClicks, PremiumClicks,
+                         Min, Max, PremiumMin, PremiumMax, CTR, FirstPlaceCTR,
+                         PremiumCTR, Currency, IsRubric}
+    We use FirstPlace position (first position in guarantee block):
+        impressions = Shows  (total potential impressions)
+        clicks      = FirstPlaceClicks
+        cpc         = Max  (max CPC for first-place guarantee, in RUB)
+        spending    = clicks × cpc  (matches Common.Max in the API response)
+        ctr         = FirstPlaceCTR
+    """
     if not isinstance(data, dict):
         return []
-    phrase_info = data.get("PhraseInfo") or []
+    phrase_info = data.get("Phrases") or []
     results: list[dict] = []
     for item in phrase_info:
         phrase = str(item.get("Phrase") or "").strip()
@@ -131,20 +151,12 @@ def _parse_forecast_data(data: Any) -> list[dict]:
 
 
 def _extract_row(phrase: str, item: dict) -> dict:
-    positions = item.get("Positions") or {}
-    # Prefer P1 (100% traffic volume); fall back to first available position
-    pos_data = (
-        positions.get("P1")
-        or positions.get("1")
-        or (next(iter(positions.values())) if positions else None)
-    )
-    vals: dict = pos_data.get("Max") or pos_data.get("Min") or pos_data if pos_data else item
-
-    shows = _to_int(vals.get("Shows"))
-    clicks = _to_int(vals.get("Clicks"))
-    spending = round(_to_float(vals.get("Cost")) / _COST_DIVISOR, 2)
-    ctr = _to_float(vals.get("Ctr"))
-    avg_cpc = round(spending / clicks, 2) if clicks > 0 else None
+    shows = _to_int(item.get("Shows"))
+    clicks = _to_int(item.get("FirstPlaceClicks"))
+    cpc = _to_float(item.get("Max"))          # max CPC in RUB for first-place guarantee
+    spending = round(clicks * cpc, 2)
+    ctr = _to_float(item.get("FirstPlaceCTR"))
+    avg_cpc = round(cpc, 2) if cpc else None
 
     return {
         "phrase": phrase,
