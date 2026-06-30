@@ -4,6 +4,7 @@ export interface TaskCreate {
   niche: string;
   region_ids: number[];
   contact?: string;
+  masks?: string[];
 }
 
 export interface TaskResponse {
@@ -18,6 +19,7 @@ export interface TaskResponse {
   error_class: string | null;
   error_message: string | null;
   suggested_niche?: string | null;
+  search_masks?: string[] | null;
   download_url: string | null;
   source: string;
   created_at: string;
@@ -164,6 +166,14 @@ export async function getRegions(query = ""): Promise<Region[]> {
 
   const suffix = params.toString() ? `?${params.toString()}` : "";
   return request(`/api/regions${suffix}`);
+}
+
+export async function generateMasks(niche: string): Promise<{ masks: string[] }> {
+  return request("/api/masks", {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ niche }),
+  });
 }
 
 export async function adminLogin(password: string): Promise<void> {

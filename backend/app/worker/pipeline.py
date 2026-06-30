@@ -14,12 +14,15 @@ from app.db.database import get_db
 from app.models.task import TERMINAL_STATUSES, TaskStatus
 from app.services.ai import generate_report
 from app.services.ai_mock import generate_report_mock
+from app.services.allocation import AllocationConfig
+from app.services.keywords import _RU_STOPWORDS, normalize_phrase
 from app.services.direct import (
     CaptchaOrAuthError,
     DirectError,
     DirectForecastClient,
     DirectTimeoutError,
 )
+from app.services.direct_api import DirectApiClient, DirectApiError
 from app.services.direct_mock import MockDirectForecastClient
 from app.services.keywords import select_keywords
 from app.services.pdf import render_pdf
@@ -146,12 +149,19 @@ async def _run_task_pipeline_steps(task_id: str, settings: Settings) -> None:
 
     niche = str(task["niche"])
     region_ids = list(task.get("region_ids") or [])
+    search_masks = [m for m in (task.get("search_masks") or []) if m and m.strip()]
     if not region_ids:
         raise PermanentError("Task has no region_ids")
     region_id = int(region_ids[0])
     region = str(task.get("region_label") or region_id)
 
-    keywords = await _collect_keywords(task_id, settings, niche, region_ids)
+    keywords = await _collect_keywords(
+        task_id,
+        settings,
+        niche,
+        region_ids,
+        search_masks=search_masks,
+    )
     if keywords is None:
         return
 
@@ -197,6 +207,7 @@ async def _collect_keywords(
     settings: Settings,
     niche: str,
     region_ids: list[int],
+    search_masks: list[str] | None = None,
 ) -> list[dict] | None:
     keywords = await load_artifact(settings.DATABASE_PATH, task_id, "keywords")
     if keywords is not None:
@@ -232,22 +243,42 @@ async def _collect_keywords(
             folder_id=settings.WORDSTAT_FOLDER_ID,
         )
     )
-    try:
-        raw_keywords = await client.top_requests(niche, region_ids)
-    except httpx.HTTPStatusError as exc:
-        raise _classify_http_status_error(exc) from exc
-    except httpx.RequestError as exc:
-        raise TransientError(str(exc)) from exc
-    except RuntimeError as exc:
-        classified = _classify_runtime_error(exc)
-        if classified is not None:
-            raise classified from exc
-        raise
+    # Strip AI-generated category prefixes like ".горячие. " or ".типы объектов. "
+    # that YandexGPT sometimes embeds even with json_schema response_format.
+    _prefix = re.compile(r"^\.[^.]+\.\s*")
+    masks = [
+        _prefix.sub("", m).strip().lower()
+        for m in (search_masks or [])
+        if m and m.strip()
+    ]
+    masks = [m for m in masks if m] or [niche]
+    raw_keywords: list[dict[str, int | str]] = []
+    first_error: PipelineError | None = None
+    for mask in masks:
+        try:
+            chunk = await client.top_requests(mask, region_ids)
+            raw_keywords.extend(chunk)
+        except httpx.HTTPStatusError as exc:
+            err = _classify_http_status_error(exc)
+            if first_error is None:
+                first_error = err
+        except httpx.RequestError as exc:
+            if first_error is None:
+                first_error = TransientError(str(exc))
+        except RuntimeError as exc:
+            classified = _classify_runtime_error(exc)
+            if classified is not None and first_error is None:
+                first_error = classified
+            elif classified is None:
+                raise
+    if not raw_keywords and first_error is not None:
+        raise first_error
+    niche_context = " ".join(masks)
     selected = select_keywords(
         raw_keywords,
         min_freq=settings.WORDSTAT_MIN_FREQ,
         max_keywords=settings.MAX_KEYWORDS,
-        niche=niche,
+        niche=niche_context,
     )
     if not selected:
         suggestion = await suggest_correction(niche)
@@ -301,16 +332,20 @@ async def _build_forecast(
         settings.PROGRESS_TTL_SECONDS,
     )
 
-    client = (
-        MockDirectForecastClient()
-        if settings.MOCK_YANDEX
-        else DirectForecastClient(
+    if settings.MOCK_YANDEX:
+        client: Any = MockDirectForecastClient()
+    elif settings.YANDEX_DIRECT_API_KEY.get_secret_value():
+        client = DirectApiClient(
+            api_key=settings.YANDEX_DIRECT_API_KEY.get_secret_value(),
+            login=settings.YANDEX_DIRECT_LOGIN.get_secret_value() or "",
+        )
+    else:
+        client = DirectForecastClient(
             storage_state_path=settings.DIRECT_STORAGE_STATE,
             forecast_url=settings.DIRECT_FORECAST_URL,
             headless=settings.PLAYWRIGHT_HEADLESS,
             timeout_ms=settings.DIRECT_TIMEOUT_MS,
         )
-    )
 
     async def on_batch(batch_index: int, total_batches: int) -> None:
         sub_progress = batch_index / total_batches if total_batches else 1.0
@@ -333,6 +368,8 @@ async def _build_forecast(
             )
     except CaptchaOrAuthError as exc:
         raise NeedsManualError(str(exc)) from exc
+    except DirectApiError as exc:
+        raise TransientError(str(exc)) from exc
     except DirectTimeoutError as exc:
         raise TransientError(str(exc)) from exc
     except DirectError as exc:
@@ -383,9 +420,16 @@ async def _build_report(
         settings.PROGRESS_TTL_SECONDS,
     )
 
+    alloc_cfg = AllocationConfig.from_settings(settings)
+    geo_tokens = {
+        tok for tok in normalize_phrase(region).split()
+        if tok not in _RU_STOPWORDS and len(tok) >= 3
+    }
+
     try:
         result = (
-            await generate_report_mock(niche, region, keywords, forecast)
+            await generate_report_mock(niche, region, keywords, forecast,
+                                       geo_tokens=geo_tokens, config=alloc_cfg)
             if settings.MOCK_YANDEX
             else await generate_report(
                 niche,
@@ -398,6 +442,8 @@ async def _build_report(
                 model=settings.YANDEX_GPT_MODEL,
                 temperature=settings.YANDEX_GPT_TEMPERATURE,
                 timeout=settings.YANDEX_GPT_TIMEOUT_S,
+                geo_tokens=geo_tokens,
+                config=alloc_cfg,
             )
         )
     except httpx.HTTPStatusError as exc:

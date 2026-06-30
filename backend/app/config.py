@@ -2,11 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-_ROOT_ENV = str(Path(__file__).resolve().parents[2] / ".env")
+_ROOT = Path(__file__).resolve().parents[2]
+_ROOT_ENV = str(_ROOT / ".env")
+
+
+def _abs(p: str) -> str:
+    """Resolve path relative to project root if not already absolute."""
+    path = Path(p)
+    return str(path if path.is_absolute() else _ROOT / path)
 
 
 class Settings(BaseSettings):
@@ -20,7 +27,12 @@ class Settings(BaseSettings):
     DOMAIN: str = "localhost"
     MOCK_YANDEX: bool = True
     LOG_LEVEL: str = "INFO"
-    DATABASE_PATH: str = "data/tasks.db"
+    DATABASE_PATH: str = str(_ROOT / "data" / "tasks.db")
+
+    @field_validator("DATABASE_PATH", mode="after")
+    @classmethod
+    def resolve_db_path(cls, v: str) -> str:
+        return _abs(v)
     REDIS_URL: str = "redis://redis:6379/0"
     CONCURRENCY: int = 3
     ARQ_MAX_JOBS: int = 10
@@ -38,6 +50,7 @@ class Settings(BaseSettings):
     DIRECT_TIMEOUT_MS: int = 45000
     YANDEX_DIRECT_LOGIN: SecretStr = SecretStr("")
     YANDEX_DIRECT_PASSWORD: SecretStr = SecretStr("")
+    YANDEX_DIRECT_API_KEY: SecretStr = SecretStr("")
     PLAYWRIGHT_HEADLESS: bool = True
     YANDEX_GPT_BASE_URL: str = "https://llm.api.cloud.yandex.net/v1"
     YANDEX_GPT_API_KEY: SecretStr = SecretStr("")
@@ -45,16 +58,33 @@ class Settings(BaseSettings):
     YANDEX_GPT_MODEL: str = ""
     YANDEX_GPT_TEMPERATURE: float = 0.3
     YANDEX_GPT_TIMEOUT_S: int = 60
+    NICHE_MASKS_MAX: int = 8
     ADMIN_PASSWORD: SecretStr = SecretStr("")
     SESSION_SECRET: SecretStr = SecretStr("")
     SESSION_TTL_SECONDS: int = 86400
     LOGIN_RATE_LIMIT: int = 5
     PUBLIC_RATE_LIMIT: int = 10
     PDF_TOKEN_TTL_SECONDS: int = 604800
-    PDF_OUTPUT_DIR: str = "data/pdf"
+    PDF_OUTPUT_DIR: str = str(_ROOT / "data" / "pdf")
+
+    @field_validator("PDF_OUTPUT_DIR", mode="after")
+    @classmethod
+    def resolve_pdf_dir(cls, v: str) -> str:
+        return _abs(v)
     UPLOAD_MAX_BYTES: int = 5242880
     PROGRESS_TTL_SECONDS: int = 3600
     KPI_MEDIAN_SECONDS: int = 180
+    MEDIA_PLAN_BUDGET: float = 120000.0
+    ALLOC_WEIGHT_CENTER: float = 1.0
+    ALLOC_WEIGHT_TRANSACTIONAL: float = 0.7
+    ALLOC_WEIGHT_CHARACTERISTIC: float = 0.4
+    ALLOC_WEIGHT_BROAD: float = 0.15
+    ALLOC_MAX_PHRASE_SHARE: float = 0.15
+    ALLOC_MAX_BROAD_SHARE: float = 0.10
+    ALLOC_BROAD_BID_FACTOR: float = 0.5
+    ALLOC_MIN_CLUSTER_FREQ: int = 50
+    ALLOC_MIN_CLUSTER_KEYS: int = 5
+    ALLOC_LOW_FREQ_THRESHOLD: int = 20
 
 
 def get_settings() -> Settings:

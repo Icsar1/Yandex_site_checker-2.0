@@ -43,6 +43,17 @@ async def test_post_api_tasks_with_empty_niche_returns_422(
 
 
 @pytest.mark.asyncio
+async def test_masks_endpoint_mock(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/masks",
+        json={"niche": "Архитектурное проектирование частных домов"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["masks"]
+
+
+@pytest.mark.asyncio
 async def test_get_api_task_returns_task(
     client: AsyncClient,
     tmp_db,

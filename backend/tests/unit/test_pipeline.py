@@ -269,6 +269,83 @@ async def test_save_artifact_upsert_overwrites(tmp_db: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_collect_keywords_multi_mask(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_db: Path,
+    pipeline_settings: Settings,
+) -> None:
+    task_id = await create_task(
+        str(tmp_db),
+        TaskCreate(niche="service", region_ids=[213], masks=["alpha", "beta"]),
+    )
+    calls: list[tuple[str, list[int] | None]] = []
+
+    async def top_requests(
+        self: object,
+        query: str,
+        region_ids: list[int] | None = None,
+    ) -> list[dict[str, int | str]]:
+        calls.append((query, region_ids))
+        return [{"phrase": f"{query} price", "freq": 100}]
+
+    def select_all(raw_keywords: list[dict], **kwargs: object) -> list[dict]:
+        assert kwargs["niche"] == "alpha beta"
+        return list(raw_keywords)
+
+    monkeypatch.setattr(pipeline.MockWordstatClient, "top_requests", top_requests)
+    monkeypatch.setattr(pipeline, "select_keywords", select_all)
+
+    keywords = await pipeline._collect_keywords(
+        task_id,
+        pipeline_settings,
+        "service",
+        [213],
+        search_masks=["alpha", "beta"],
+    )
+
+    assert calls == [("alpha", [213]), ("beta", [213])]
+    assert keywords == [
+        {"phrase": "alpha price", "freq": 100},
+        {"phrase": "beta price", "freq": 100},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_collect_keywords_fallback_to_niche(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_db: Path,
+    pipeline_settings: Settings,
+) -> None:
+    task_id = await create_task(str(tmp_db), TaskCreate(niche="service", region_ids=[213]))
+    calls: list[tuple[str, list[int] | None]] = []
+
+    async def top_requests(
+        self: object,
+        query: str,
+        region_ids: list[int] | None = None,
+    ) -> list[dict[str, int | str]]:
+        calls.append((query, region_ids))
+        return [{"phrase": f"{query} price", "freq": 100}]
+
+    def select_all(raw_keywords: list[dict], **kwargs: object) -> list[dict]:
+        assert kwargs["niche"] == "service"
+        return list(raw_keywords)
+
+    monkeypatch.setattr(pipeline.MockWordstatClient, "top_requests", top_requests)
+    monkeypatch.setattr(pipeline, "select_keywords", select_all)
+
+    keywords = await pipeline._collect_keywords(
+        task_id,
+        pipeline_settings,
+        "service",
+        [213],
+    )
+
+    assert calls == [("service", [213])]
+    assert keywords == [{"phrase": "service price", "freq": 100}]
+
+
+@pytest.mark.asyncio
 async def test_semaphore_limits_concurrency(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pipeline, "_direct_semaphore", None)
     semaphore = pipeline.get_direct_semaphore(concurrency=2)

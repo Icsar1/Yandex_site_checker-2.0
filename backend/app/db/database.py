@@ -23,6 +23,12 @@ async def init_db(db_path: str) -> None:
         except Exception:
             pass  # Column already exists
 
+        try:
+            await db.execute("ALTER TABLE tasks ADD COLUMN search_masks TEXT")
+            await db.commit()
+        except Exception:
+            pass
+
 
 @asynccontextmanager
 async def get_db(db_path: str) -> AsyncIterator[aiosqlite.Connection]:

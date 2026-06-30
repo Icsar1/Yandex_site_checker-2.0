@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     error_class TEXT,
     error_message TEXT,
     suggested_niche TEXT,
+    search_masks TEXT,
     progress_pct INTEGER NOT NULL DEFAULT 0,
     stage TEXT,
     download_token TEXT UNIQUE,
