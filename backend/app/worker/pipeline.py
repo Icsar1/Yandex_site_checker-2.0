@@ -241,7 +241,15 @@ async def _collect_keywords(
             folder_id=settings.WORDSTAT_FOLDER_ID,
         )
     )
-    masks = [m for m in (search_masks or []) if m and m.strip()] or [niche]
+    # Strip AI-generated category prefixes like ".горячие. " or ".типы объектов. "
+    # that YandexGPT sometimes embeds even with json_schema response_format.
+    _prefix = re.compile(r"^\.[^.]+\.\s*")
+    masks = [
+        _prefix.sub("", m).strip().lower()
+        for m in (search_masks or [])
+        if m and m.strip()
+    ]
+    masks = [m for m in masks if m] or [niche]
     raw_keywords: list[dict[str, int | str]] = []
     first_error: PipelineError | None = None
     for mask in masks:
