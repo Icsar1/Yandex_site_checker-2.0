@@ -61,7 +61,7 @@ def can_transition(current_status: TaskStatus, new_status: TaskStatus) -> bool:
 
 async def create_task(db_path: str, data: TaskCreate) -> str:
     task_id = str(uuid4())
-    region_label = ", ".join(str(r) for r in data.region_ids)
+    region_label = (data.region_label or "").strip() or ", ".join(str(r) for r in data.region_ids)
     search_masks_json = json.dumps(data.masks, ensure_ascii=False) if data.masks else None
 
     async with get_db(db_path) as db:

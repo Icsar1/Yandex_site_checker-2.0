@@ -63,12 +63,13 @@ def test_compute_forecast_aggregates_correct_sums() -> None:
     result = compute_forecast_aggregates(forecast, keywords)
 
     assert result["n_keywords"] == 2
-    # total_spending = fixed budget (120000) regardless of Yandex forecast sum
-    assert result["total_spending"] == 120000.0
+    assert result["methodology_version"] == 3
+    assert result["total_spending"] == 60000.0
+    assert len(result["budget_scenarios"]) == 4
     # clusters and warnings are present
     assert "clusters" in result
     assert "warnings" in result
-    # top_keywords is sorted by allocated_budget desc
+    # top_keywords contains phrase demand metrics, not phrase budgets
     assert isinstance(result["top_keywords"], list)
 
 
@@ -157,8 +158,7 @@ def test_compute_forecast_aggregates_empty_forecast() -> None:
     assert result["n_keywords"] == 0
     assert result["total_impressions"] == 0
     assert result["total_clicks"] == 0
-    # With no keywords, total_spending = fixed budget (always present in config)
-    assert result["total_spending"] == 120000.0
+    assert result["total_spending"] == 0.0
     assert result["avg_cpc"] == 0
     assert result["avg_ctr"] == 0
     assert result["top_keywords"] == []
@@ -191,7 +191,7 @@ def test_build_user_prompt_contains_facts() -> None:
         "total_spending": 750.55,
         "avg_cpc": 10.01,
         "avg_ctr": 5.0,
-        "top_keywords": [{"phrase": "купить диван", "spending": 500.0}],
+        "top_keywords": [{"phrase": "купить диван", "clicks": 50, "cpc": 10.0, "priority": "high"}],
         "keyword_clusters": [
             {"title": "Диван", "sample_keywords": ["купить диван", "диван цена"]},
         ],
@@ -201,7 +201,8 @@ def test_build_user_prompt_contains_facts() -> None:
 
     assert "Ниша: мебель" in prompt
     assert "Регион: Москва" in prompt
-    assert "Количество ключевых фраз: 2" in prompt
+    assert "v3" in prompt
+    assert "2" in prompt
     assert "750.55 руб." in prompt
     assert "купить диван" in prompt
 

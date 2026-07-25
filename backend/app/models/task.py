@@ -40,6 +40,7 @@ class MaskResponse(BaseModel):
 class TaskCreate(BaseModel):
     niche: str = Field(min_length=1)
     region_ids: list[int] = Field(min_length=1)
+    region_label: str | None = Field(default=None, max_length=300)
     contact: str | None = None
     masks: list[str] | None = None
 

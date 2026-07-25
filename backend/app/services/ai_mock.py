@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.services.ai import compute_forecast_aggregates
-from app.services.allocation import AllocationConfig
+from app.services.allocation import AllocationConfig, METHODOLOGY_VERSION
 
 
 async def generate_search_masks_mock(niche: str, max_masks: int = 8) -> list[str]:
@@ -39,10 +39,10 @@ async def generate_report_mock(
     report = {
         "summary": (
             f"Для ниши «{niche}» в регионе «{region}» подобрано "
-            f"{aggregates['n_keywords']} ключевых фраз. Распределяемый бюджет "
+            f"{aggregates['n_keywords']} ключевых фраз. Стартовый бюджет "
             f"составляет {aggregates['total_spending']:.0f} руб. при ожидаемом "
             f"объёме {aggregates['total_impressions']} показов.\n\n"
-            "Бюджет распределён стратегически: центр тяжести (самые узкие кластеры) "
+            "Бюджет распределён по кластерам: центр тяжести (самые узкие кластеры) "
             "получает приоритет; голый базис ограничен до 10% бюджета."
         ),
         "groups": _build_mock_groups(niche, aggregates),
@@ -52,7 +52,7 @@ async def generate_report_mock(
                 f"в регионе «{region}»."
             ),
             (
-                f"Распределяемый бюджет: {aggregates['total_spending']:.0f} руб."
+                f"Стартовый бюджет: {aggregates['total_spending']:.0f} руб."
             ),
             (
                 f"Ожидаемые клики: {aggregates['total_clicks']:.0f}, средний CPC: "
@@ -63,7 +63,7 @@ async def generate_report_mock(
         ],
         "recommendations": [
             "Запускать кампанию с разделением ключевых фраз по смысловым группам.",
-            "Начать с ключей с наибольшим прогнозным бюджетом и отдельно контролировать ставки.",
+            "Начать с кластеров высокого приоритета и отдельно контролировать ставки.",
             "После старта сравнить фактические CTR и CPC с прогнозом и скорректировать бюджет.",
         ],
         "disclaimer": (
@@ -71,7 +71,7 @@ async def generate_report_mock(
             "могут отличаться."
         ),
     }
-    return {"report": report, "aggregates": aggregates}
+    return {"methodology_version": METHODOLOGY_VERSION, "report": report, "aggregates": aggregates}
 
 
 def _build_mock_groups(niche: str, aggregates: dict) -> list[dict]:

@@ -3,6 +3,7 @@ const BASE = "";
 export interface TaskCreate {
   niche: string;
   region_ids: number[];
+  region_label?: string;
   contact?: string;
   masks?: string[];
 }

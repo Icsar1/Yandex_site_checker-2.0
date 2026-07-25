@@ -79,7 +79,6 @@ class Settings(BaseSettings):
     ALLOC_WEIGHT_TRANSACTIONAL: float = 0.7
     ALLOC_WEIGHT_CHARACTERISTIC: float = 0.4
     ALLOC_WEIGHT_BROAD: float = 0.15
-    ALLOC_MAX_PHRASE_SHARE: float = 0.15
     ALLOC_MAX_BROAD_SHARE: float = 0.10
     ALLOC_BROAD_BID_FACTOR: float = 0.5
     ALLOC_MIN_CLUSTER_FREQ: int = 50

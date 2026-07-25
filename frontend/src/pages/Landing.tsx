@@ -155,6 +155,7 @@ export function Landing() {
         const created = await createTask({
           niche: suggested,
           region_ids: [regionId],
+          region_label: region?.name ?? task?.region_label,
           contact: contact.trim() || undefined,
         });
 
@@ -216,6 +217,7 @@ export function Landing() {
       const created = await createTask({
         niche: niche.trim(),
         region_ids: [region.id],
+        region_label: region.name,
         contact: contact.trim() || undefined,
         masks: masksToUse,
       });

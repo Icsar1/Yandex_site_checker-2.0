@@ -3,675 +3,263 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Медиаплан: {{ niche }}</title>
+  <title>Медиаплан · {{ niche }}</title>
   <style>
-    @font-face {
-      font-family: "ReportSans";
-      src:
-        local("Inter"),
-        local("Segoe UI"),
-        url("../static/fonts/ReportSans-Regular.woff2") format("woff2");
-      font-weight: 400;
-      font-style: normal;
-      font-display: swap;
-    }
-
-    @font-face {
-      font-family: "ReportSans";
-      src:
-        local("Inter Semi Bold"),
-        local("Segoe UI Semibold"),
-        url("../static/fonts/ReportSans-SemiBold.woff2") format("woff2");
-      font-weight: 700;
-      font-style: normal;
-      font-display: swap;
-    }
-
-    @page {
-      size: A4;
-      margin: 24px;
-    }
-
+    @page { size: A4; margin: 0.85in; }
     :root {
-      --primary: #1A56DB;
-      --accent: #16A34A;
-      --ink: #111827;
-      --muted: #6B7280;
-      --hairline: #E5E7EB;
-      --surface: #F9FAFB;
-      --paper: #FFFFFF;
+      --color-bg: #f3f2f2;
+      --color-surface: #eae9e9;
+      --color-text: #201e1d;
+      --color-accent: #0088b0;
+      --color-accent-2: #d6006c;
+      --color-divider: rgba(32, 30, 29, 0.16);
+      --color-neutral-100: #f8f4f4;
+      --color-neutral-200: #eae7e7;
+      --color-neutral-400: #bab6b6;
+      --color-neutral-700: #605d5d;
+      --color-accent-100: #e9f8ff;
+      --color-accent-700: #006786;
+      --color-accent-800: #004961;
+      --color-accent-2-100: #fff1f4;
+      --color-accent-2-700: #aa0b56;
+      --font-heading: Georgia, "Times New Roman", serif;
+      --font-body: Georgia, "Times New Roman", serif;
     }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    html {
-      font-family: "ReportSans", "Segoe UI", Arial, "Noto Sans", "DejaVu Sans", sans-serif;
-      color: var(--ink);
-      background: var(--paper);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
     body {
-      margin: 0;
-      background: var(--paper);
+      background: var(--color-bg);
+      color: var(--color-text);
+      font-family: var(--font-body);
+      font-size: 14px;
+      line-height: 1.45;
     }
-
+    .report { max-width: 760px; margin: 0 auto; }
     .running-header,
-    .page-footer {
-      position: fixed;
-      left: 0;
-      right: 0;
-      z-index: 10;
-      color: var(--muted);
-      font-size: 10px;
-      line-height: 1.2;
-    }
-
-    .running-header {
-      top: 0;
+    .running-footer {
       display: flex;
       justify-content: space-between;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--hairline);
-    }
-
-    .page-footer {
-      bottom: 0;
-      display: flex;
-      justify-content: space-between;
-      padding-top: 8px;
-      border-top: 1px solid var(--hairline);
-    }
-
-    .page-footer::after {
-      content: "Страница " counter(page);
-    }
-
-    .report-page {
-      padding: 44px 0 32px;
-    }
-
-    .cover {
-      min-height: 720px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      page-break-after: always;
-    }
-
-    .cover-kicker {
-      margin: 0 0 16px;
-      color: var(--primary);
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-    }
-
-    .cover h1 {
-      max-width: 620px;
-      margin: 0;
-      font-size: 38px;
-      line-height: 1.12;
-      font-weight: 700;
-    }
-
-    .cover-meta {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 16px;
-      margin-top: 48px;
-      padding-top: 24px;
-      border-top: 3px solid var(--primary);
-    }
-
-    .meta-label,
-    .kpi-label,
-    .table-caption,
-    .section-kicker {
-      color: var(--muted);
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-    }
-
-    .meta-value {
-      margin-top: 4px;
-      font-size: 16px;
-      font-weight: 700;
-    }
-
-    .section {
-      margin: 0 0 24px;
-      page-break-inside: avoid;
-    }
-
-    .section h2 {
-      margin: 0 0 12px;
-      font-size: 20px;
-      line-height: 1.2;
-    }
-
-    .summary-card,
-    .group-card,
-    .disclaimer {
-      border: 1px solid var(--hairline);
-      border-radius: 8px;
-      background: var(--paper);
-      page-break-inside: avoid;
-    }
-
-    .summary-card {
-      padding: 20px;
-      border-left: 5px solid var(--primary);
-      white-space: pre-line;
-    }
-
-    .summary-card p,
-    .disclaimer p,
-    .group-card p {
-      margin: 0;
-    }
-
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
-    }
-
-    .kpi-card {
-      min-height: 96px;
-      padding: 16px;
-      border: 1px solid var(--hairline);
-      border-radius: 8px;
-      background: var(--surface);
-    }
-
-    .kpi-value {
-      margin-top: 8px;
-      color: var(--primary);
-      font-size: 24px;
-      line-height: 1.15;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .kpi-note {
-      margin-top: 4px;
-      color: var(--muted);
+      gap: 24px;
       font-size: 11px;
+      color: rgba(32, 30, 29, 0.62);
     }
-
-    .forecast-table {
-      width: 100%;
-      border-collapse: collapse;
-      border: 1px solid var(--hairline);
-      border-radius: 8px;
-      overflow: hidden;
-      page-break-inside: auto;
-    }
-
-    .forecast-table th,
-    .forecast-table td {
-      padding: 9px 10px;
-      border-bottom: 1px solid var(--hairline);
-      text-align: left;
-      vertical-align: top;
-    }
-
-    .forecast-table th {
-      color: var(--muted);
-      background: var(--surface);
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-    }
-
-    .forecast-table tbody tr:nth-child(even) {
-      background: var(--surface);
-    }
-
-    .forecast-table tbody tr:last-child td {
-      border-bottom: 0;
-    }
-
-    .number {
-      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap;
-    }
-
-    .muted {
-      color: var(--muted);
-    }
-
-    .groups-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-    }
-
-    .group-card {
-      padding: 16px;
-    }
-
-    .group-card h3 {
-      margin: 0 0 8px;
-      font-size: 15px;
-      line-height: 1.25;
-    }
-
-    .kw-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 12px;
-    }
-
-    .kw-chip {
-      display: inline-flex;
-      align-items: center;
-      min-height: 24px;
-      padding: 3px 8px;
-      border: 1px solid #BFDBFE;
-      border-radius: 999px;
-      color: #1E40AF;
-      background: #EFF6FF;
-      font-size: 11px;
-      line-height: 1.35;
-    }
-
-    .list-conclusions,
-    .list-reco {
-      margin: 0;
-      padding-left: 22px;
-    }
-
-    .list-conclusions li,
-    .list-reco li {
-      margin: 0 0 8px;
-      padding-left: 4px;
-    }
-
-    .list-conclusions li::marker {
-      color: var(--primary);
-      font-weight: 700;
-    }
-
-    .list-reco li::marker {
-      color: var(--accent);
-      font-weight: 700;
-    }
-
-    .bars {
-      display: grid;
-      gap: 10px;
-    }
-
-    .bar {
-      display: grid;
-      grid-template-columns: minmax(160px, 1.5fr) minmax(220px, 2fr) 88px;
-      gap: 12px;
-      align-items: center;
-    }
-
-    .bar-label {
-      min-width: 0;
-      overflow-wrap: anywhere;
-      font-weight: 700;
-    }
-
-    .bar-track {
-      height: 10px;
-      overflow: hidden;
-      border-radius: 999px;
-      background: var(--hairline);
-    }
-
-    .bar-fill {
-      height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, var(--primary), var(--accent));
-    }
-
-    .bar-value {
-      text-align: right;
-    }
-
-    .disclaimer {
-      padding: 16px;
-      color: var(--muted);
-      background: var(--surface);
-      font-size: 11px;
-    }
-
-    .warning-banner {
-      padding: 12px 16px;
-      border: 1px solid #FCD34D;
-      border-left: 5px solid #F59E0B;
-      border-radius: 8px;
-      background: #FFFBEB;
-      color: #92400E;
-      font-size: 12px;
-      margin-bottom: 8px;
-    }
-
-    .cluster-table {
-      width: 100%;
-      border-collapse: collapse;
-      border: 1px solid var(--hairline);
-      border-radius: 8px;
-      overflow: hidden;
-      font-size: 12px;
-    }
-
-    .cluster-table th,
-    .cluster-table td {
-      padding: 8px 10px;
-      border-bottom: 1px solid var(--hairline);
-      text-align: left;
-      vertical-align: top;
-    }
-
-    .cluster-table th {
-      color: var(--muted);
-      background: var(--surface);
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-    }
-
-    .cluster-table tbody tr:last-child td { border-bottom: 0; }
-
-    .badge-cog {
-      display: inline-block;
-      padding: 1px 6px;
-      border-radius: 999px;
-      background: #DCFCE7;
-      color: #15803D;
-      font-size: 10px;
-      font-weight: 700;
-    }
-
-    .badge-type {
-      display: inline-block;
-      padding: 1px 6px;
-      border-radius: 999px;
-      font-size: 10px;
-      font-weight: 700;
-    }
-
-    .badge-type-transactional { background: #DBEAFE; color: #1E40AF; }
-    .badge-type-characteristic { background: #F3E8FF; color: #7E22CE; }
-    .badge-type-general { background: #F3F4F6; color: #6B7280; }
-
-    .minus-chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-    }
-
-    .minus-chip {
-      display: inline-block;
-      padding: 1px 5px;
-      border: 1px solid #FCA5A5;
-      border-radius: 4px;
-      background: #FEF2F2;
-      color: #991B1B;
-      font-size: 10px;
-    }
-
-    @media print {
-      html,
-      body {
-        width: 100%;
-        min-height: 100%;
-      }
-
-      .section,
-      .group-card,
-      .kpi-card,
-      .summary-card,
-      .disclaimer {
-        break-inside: avoid;
-      }
-    }
+    .running-header { align-items: baseline; border-bottom: 1px solid var(--color-divider); padding-bottom: 8px; margin-bottom: 28px; }
+    .running-footer { border-top: 1px solid var(--color-divider); padding-top: 8px; margin-top: 28px; }
+    h1, h2, h3 { font-family: var(--font-heading); font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+    h1 { max-width: 610px; font-size: 46px; line-height: 0.98; margin-bottom: 24px; }
+    h2 { font-size: 22px; line-height: 1.15; margin-bottom: 16px; }
+    h3 { font-size: 16px; margin-bottom: 8px; }
+    p { margin: 0; }
+    section { margin-bottom: 40px; }
+    .ms-h6 { margin: 0 0 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(32, 30, 29, 0.62); }
+    .ms-stat-num { font-family: var(--font-heading); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .meta-row { display: flex; gap: 40px; flex-wrap: wrap; padding-bottom: 28px; margin-bottom: 28px; border-bottom: 1px solid var(--color-divider); }
+    .meta-value { font-family: var(--font-heading); font-weight: 600; font-size: 17px; }
+    .lead { max-width: 660px; font-size: 17px; line-height: 1.6; white-space: pre-line; }
+    .stats { display: flex; gap: 48px; flex-wrap: wrap; }
+    .stat .num { font-size: 34px; line-height: 1; }
+    .stat .caption { margin-top: 6px; font-size: 13px; opacity: 0.75; }
+    .scenario-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+    .scenario { break-inside: avoid; }
+    .scenario.recommended { border-top: 2px solid var(--color-accent); padding-top: 14px; margin-top: -14px; }
+    .scenario-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.65; margin-bottom: 6px; }
+    .scenario-budget { font-size: 24px; }
+    .scenario-note { margin-top: 6px; font-size: 12.5px; opacity: 0.75; }
+    .table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .table th { padding: 8px 7px; border-bottom: 1px solid var(--color-divider); text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.68; }
+    .table td { padding: 9px 7px; border-bottom: 1px solid rgba(32,30,29,0.09); vertical-align: top; }
+    .table tr:last-child td { border-bottom: 0; }
+    .number { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .card { padding: 16px; background: rgba(255,255,255,0.26); border: 1px solid var(--color-divider); break-inside: avoid; }
+    .card-kicker { margin-bottom: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-accent-700); }
+    .card-body { margin-bottom: 12px; font-size: 13px; opacity: 0.86; }
+    .tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; line-height: 1.5; white-space: nowrap; }
+    .tag-accent { background: var(--color-accent); color: white; }
+    .tag-accent-soft { background: var(--color-accent-100); color: var(--color-accent-800); }
+    .tag-accent-2 { background: var(--color-accent-2-100); color: var(--color-accent-2-700); }
+    .tag-neutral { background: var(--color-neutral-200); color: var(--color-neutral-700); }
+    .tag-outline { border: 1px solid var(--color-divider); color: rgba(32,30,29,0.72); }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; background: var(--color-neutral-400); }
+    .dot.hot { background: var(--color-accent); }
+    .budget-layout { display: flex; gap: 46px; flex-wrap: wrap; align-items: center; }
+    .donut { position: relative; width: 190px; height: 190px; flex: none; border-radius: 50%; background: conic-gradient(var(--color-accent) 0 40%, #62c5ee 40% 62%, #ff90b1 62% 78%, #d82071 78% 90%, var(--color-neutral-400) 90% 100%); }
+    .donut-hole { position: absolute; inset: 36px; display: flex; align-items: center; justify-content: center; flex-direction: column; background: var(--color-bg); border-radius: 50%; text-align: center; }
+    .budget-list { display: flex; flex-direction: column; gap: 9px; font-size: 13px; }
+    .budget-item { display: flex; align-items: center; gap: 8px; }
+    ol { margin: 0; padding-left: 22px; max-width: 660px; }
+    li { margin-bottom: 10px; }
+    .warning { max-width: 660px; padding: 12px 14px; border-left: 3px solid var(--color-accent-2); background: rgba(214,0,108,0.07); font-size: 13px; }
+    .page-break { break-before: page; }
+    .avoid-break { break-inside: avoid; }
+    .muted-note { margin-top: 8px; font-size: 11px; opacity: 0.62; }
+    @media print { .avoid-break, .card, .scenario { break-inside: avoid; } }
   </style>
 </head>
 <body>
   {% set top_keywords = aggregates.get("top_keywords", []) %}
-  {% set max_spending = top_keywords[0].get("spending", 0) | float if top_keywords else 0 %}
+  {% set scenarios = aggregates.get("budget_scenarios", []) %}
+  {% set full_demand = aggregates.get("full_demand", {}) %}
+  {% set clean_cpc = aggregates.get("clean_cpc", {}) %}
+  {% set clusters = aggregates.get("clusters", []) %}
+  {% set recommended = scenarios | selectattr("id", "equalto", "recommended") | list | first %}
+  {% set cautious = scenarios | selectattr("id", "equalto", "cautious") | list | first %}
+  {% set confident = scenarios | selectattr("id", "equalto", "confident") | list | first %}
+  {% set full = scenarios | selectattr("id", "equalto", "full") | list | first %}
 
-  {% macro number_cell(value, suffix="") -%}
-    {% if value is defined and value is not none %}
-      <span class="number">{{ value | format_number }}{{ suffix }}</span>
-    {% else %}
-      <span class="muted">-</span>
-    {% endif %}
-  {%- endmacro %}
+  {% macro money(value) -%}<span class="number">{{ value | format_number }}&nbsp;₽</span>{%- endmacro %}
+  {% macro num(value) -%}<span class="number">{{ value | format_number }}</span>{%- endmacro %}
+  {% macro priority_label(value) -%}{% if value == "high" %}высокий{% elif value == "medium" %}средний{% elif value == "low" %}низкий{% else %}{{ value }}{% endif %}{%- endmacro %}
+  {% macro type_label(value) -%}{% if value == "transactional" %}коммерческий{% elif value == "characteristic" %}уточняющий{% elif value == "general" %}общий{% else %}{{ value }}{% endif %}{%- endmacro %}
 
-  <header class="running-header">
-    <span>Yandex Mediaplan MVP</span>
-    <span>{{ generated_at }}</span>
-  </header>
+  <main class="report">
+    <div class="running-header">
+      <span>Медиаплан · {{ niche }}</span>
+      <span>Ахсар Рыжов · интернет-маркетолог</span>
+    </div>
 
-  <footer class="page-footer">
-    <span>{{ niche }} - {{ region }}</span>
-  </footer>
+    <p class="ms-h6" style="margin-top:40px; margin-bottom:14px;">Прогнозный медиаплан · Яндекс Директ</p>
+    <h1>{{ niche }}</h1>
 
-  <main class="report-page">
-    <section class="cover">
-      <p class="cover-kicker">Прогнозный медиаплан</p>
-      <h1>{{ niche }}</h1>
-      <div class="cover-meta">
-        <div>
-          <div class="meta-label">Регион</div>
-          <div class="meta-value">{{ region }}</div>
-        </div>
-        <div>
-          <div class="meta-label">Дата</div>
-          <div class="meta-value">{{ generated_at }}</div>
-        </div>
-        <div>
-          <div class="meta-label">Ключевых фраз</div>
-          <div class="meta-value number">{{ aggregates.get("n_keywords", 0) | int | format_number }}</div>
-        </div>
+    <div class="meta-row">
+      <div><div class="ms-h6">Регион</div><div class="meta-value">{{ region }}</div></div>
+      <div><div class="ms-h6">Дата отчёта</div><div class="meta-value">{{ generated_at }}</div></div>
+      <div><div class="ms-h6">Ключевых фраз</div><div class="meta-value number">{{ aggregates.get("n_keywords", 0) | int | format_number }}</div></div>
+      <div><div class="ms-h6">Подготовил</div><div class="meta-value">Ахсар Рыжов</div></div>
+    </div>
+
+    <section class="avoid-break">
+      <p class="ms-h6">Кратко</p>
+      <p class="lead">{{ report.get("summary", "") }}</p>
+    </section>
+
+    <section class="avoid-break">
+      <p class="ms-h6">Прогноз на месяц</p>
+      <div class="stats">
+        <div class="stat"><div class="num ms-stat-num" style="color:var(--color-accent-700);">{{ aggregates.get("total_impressions", 0) | int | format_number }}</div><div class="caption">показов</div></div>
+        <div class="stat"><div class="num ms-stat-num">{{ aggregates.get("total_clicks", 0) | int | format_number }}</div><div class="caption">кликов</div></div>
+        <div class="stat"><div class="num ms-stat-num">{{ aggregates.get("recommended_budget", aggregates.get("total_spending", 0)) | format_number }}&nbsp;₽</div><div class="caption">стартовый бюджет</div></div>
+        <div class="stat"><div class="num ms-stat-num">{{ aggregates.get("avg_cpc", 0) | format_number }}&nbsp;₽</div><div class="caption">прогнозный CPC</div></div>
       </div>
     </section>
 
-    <section class="section">
-      <div class="section-kicker">Executive summary</div>
-      <h2>Краткое резюме</h2>
-      <div class="summary-card">
-        <p>{{ report.get("summary", "") }}</p>
+    <section>
+      <p class="ms-h6">Сценарии бюджета</p>
+      <h2>С чего начать</h2>
+      <div class="scenario-grid">
+        {% for item in [cautious, recommended, confident] if item %}
+          <div class="scenario {% if item.get('id') == 'recommended' %}recommended{% endif %}">
+            {% if item.get('id') == 'recommended' %}<span class="tag tag-accent" style="margin-bottom:8px;">Рекомендуем</span>{% endif %}
+            <div class="scenario-title">{{ item.get("title", "") }}</div>
+            <div class="scenario-budget ms-stat-num">{{ item.get("budget", 0) | format_number }}&nbsp;₽</div>
+            <p class="scenario-note">{{ item.get("clicks", 0) | int | format_number }} кликов · {{ ((item.get("coverage", 0) | float) * 100) | round | int }}% спроса</p>
+          </div>
+        {% endfor %}
       </div>
+      <p class="muted-note">Полный спрос по очищенным фразам: {{ full_demand.get("budget_max", 0) | format_number }}&nbsp;₽{% if full %}; сценарий полного спроса: {{ full.get("clicks", 0) | int | format_number }} кликов{% endif %}. CPC в сценариях — прогноз Direct, очищенный по медиане/винзоризации, не фактический CPC аккаунта после оптимизации.</p>
     </section>
 
-    <section class="section">
-      <div class="section-kicker">KPI</div>
-      <h2>Основные показатели прогноза</h2>
-      <div class="kpi-grid">
-        <article class="kpi-card">
-          <div class="kpi-label">Показы</div>
-          <div class="kpi-value number">{{ aggregates.get("total_impressions", 0) | int | format_number }}</div>
-          <div class="kpi-note">Суммарный прогноз</div>
-        </article>
-        <article class="kpi-card">
-          <div class="kpi-label">Клики</div>
-          <div class="kpi-value number">{{ aggregates.get("total_clicks", 0) | int | format_number }}</div>
-          <div class="kpi-note">Ожидаемый объем</div>
-        </article>
-        <article class="kpi-card">
-          <div class="kpi-label">Бюджет</div>
-          <div class="kpi-value number">{{ aggregates.get("total_spending", 0) | format_number }}</div>
-          <div class="kpi-note">руб.</div>
-        </article>
-        <article class="kpi-card">
-          <div class="kpi-label">Средний CPC</div>
-          <div class="kpi-value number">{{ aggregates.get("avg_cpc", 0) | format_number }}</div>
-          <div class="kpi-note">руб. за клик</div>
-        </article>
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="section-kicker">Forecast</div>
-      <h2>Топ фраз по бюджету</h2>
-      <table class="forecast-table">
-        <caption class="table-caption">Первые 10 фраз из агрегатов прогноза</caption>
-        <thead>
-          <tr>
-            <th>Фраза</th>
-            <th>Показы</th>
-            <th>Клики</th>
-            <th>Бюджет</th>
-            <th>CTR</th>
-            <th>CPC</th>
-          </tr>
-        </thead>
+    <section>
+      <p class="ms-h6">Прогноз по фразам</p>
+      <h2>Топ-10 фраз по прогнозному спросу</h2>
+      <table class="table">
+        <thead><tr><th>Фраза</th><th>Показы</th><th>Клики</th><th>CTR</th><th>CPC</th><th>Приоритет</th></tr></thead>
         <tbody>
           {% for item in top_keywords[:10] %}
             <tr>
-              <td>
-                {{ item.get("phrase", "") }}
-                {% if item.get("is_center_of_gravity") %}<span class="badge-cog">⊙ ЦТ</span>{% endif %}
-              </td>
-              <td>{{ number_cell(item.get("impressions")) }}</td>
-              <td>{{ number_cell(item.get("clicks")) }}</td>
-              <td>{{ number_cell(item.get("spending"), " руб.") }}</td>
-              <td>{{ number_cell(item.get("ctr"), "%") }}</td>
-              <td>{{ number_cell(item.get("cpc"), " руб.") }}</td>
+              <td>{{ item.get("phrase", "") }}{% if item.get("is_center_of_gravity") %} <span class="tag tag-accent" style="margin-left:6px;">Центр тяжести</span>{% endif %}</td>
+              <td>{{ num(item.get("impressions", 0)) }}</td>
+              <td>{{ num(item.get("clicks", 0)) }}</td>
+              <td>{{ num(item.get("ctr", 0)) }}%</td>
+              <td>{{ money(item.get("cpc", 0)) }}</td>
+              <td><span class="tag tag-accent-soft">{{ priority_label(item.get("priority", "")) }}</span></td>
             </tr>
           {% else %}
+            <tr><td colspan="6">Нет данных для таблицы прогноза.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted-note">Таблица показывает спрос и ставку по строке прогноза Direct: показы, клики, CTR и CPC.</p>
+    </section>
+
+    <section>
+      <p class="ms-h6">Смысловые группы</p>
+      <h2>Как сгруппированы фразы</h2>
+      <div class="cards">
+        {% for group in report.get("groups", []) %}
+          <div class="card">
+            <div class="card-kicker">{{ group.get("title", "") }}</div>
+            <p class="card-body">{{ group.get("description", "") }}</p>
+            <div class="chips">
+              {% for keyword in group.get("sample_keywords", []) %}<span class="tag tag-neutral">{{ keyword }}</span>{% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="page-break">
+      <p class="ms-h6">Структура кампании</p>
+      <h2>Кластеры и приоритет запуска</h2>
+      <table class="table">
+        <thead><tr><th>Кластер</th><th>Тип</th><th>Приоритет</th><th>Фраз</th><th>Бюджет</th><th>Доля</th><th>Минус-слова</th></tr></thead>
+        <tbody>
+          {% for cluster in clusters %}
             <tr>
-              <td colspan="6" class="muted">Нет данных для таблицы прогноза.</td>
+              <td><span class="dot {% if cluster.get('priority') == 'high' %}hot{% endif %}"></span>{{ cluster.get("title", "") }}{% if cluster.get("is_center_of_gravity") %} <span class="tag tag-accent" style="margin-left:4px;">Центр тяжести</span>{% endif %}</td>
+              <td><span class="tag {% if cluster.get('type') == 'transactional' %}tag-accent-2{% else %}tag-neutral{% endif %}">{{ type_label(cluster.get("type", "")) }}</span></td>
+              <td><span class="tag tag-accent-soft">{{ priority_label(cluster.get("priority", "")) }}</span></td>
+              <td>{{ cluster.get("n_keys", 0) }}</td>
+              <td>{{ money(cluster.get("allocated_budget", 0)) }}</td>
+              <td>{{ (cluster.get("allocated_share", 0) * 100) | round | int }}%</td>
+              <td><div class="chips">{% for word in cluster.get("minus_words", [])[:5] %}<span class="tag tag-outline">{{ word }}</span>{% endfor %}</div></td>
             </tr>
+          {% else %}
+            <tr><td colspan="7">Нет данных о кластерах.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </section>
 
-    <section class="section">
-      <div class="section-kicker">Groups</div>
-      <h2>Группы ключевых фраз</h2>
-      <div class="groups-grid">
-        {% for group in report.get("groups", []) %}
-          <article class="group-card">
-            <h3>{{ group.get("title", "") }}</h3>
-            <p>{{ group.get("description", "") }}</p>
-            <div class="kw-list">
-              {% for keyword in group.get("sample_keywords", []) %}
-                <span class="kw-chip">{{ keyword }}</span>
-              {% endfor %}
-            </div>
-          </article>
-        {% endfor %}
+    <section>
+      <p class="ms-h6">Распределение бюджета</p>
+      <h2>Куда идут деньги</h2>
+      <div class="budget-layout">
+        <div class="donut"><div class="donut-hole"><div class="ms-stat-num" style="font-size:22px;">{{ aggregates.get("recommended_budget", aggregates.get("total_spending", 0)) | format_number }}&nbsp;₽</div><div style="font-size:10px; opacity:0.65;">стартовый бюджет</div></div></div>
+        <div class="budget-list">
+          {% for cluster in clusters[:6] %}
+            <div class="budget-item"><span class="dot {% if loop.index == 1 %}hot{% endif %}" style="width:10px;height:10px;"></span>{{ cluster.get("title", "") }} — {{ (cluster.get("allocated_share", 0) * 100) | round | int }}%</div>
+          {% endfor %}
+        </div>
       </div>
     </section>
 
-    <section class="section">
-      <div class="section-kicker">Conclusions</div>
-      <h2>Выводы</h2>
-      <ol class="list-conclusions">
-        {% for conclusion in report.get("conclusions", []) %}
-          <li>{{ conclusion }}</li>
-        {% endfor %}
-      </ol>
+    <section class="page-break">
+      <p class="ms-h6">Выводы</p>
+      <h2>Что показал анализ</h2>
+      <ol>{% for conclusion in report.get("conclusions", []) %}<li>{{ conclusion }}</li>{% endfor %}</ol>
     </section>
 
-    <section class="section">
-      <div class="section-kicker">Recommendations</div>
-      <h2>Рекомендации</h2>
-      <ol class="list-reco">
-        {% for recommendation in report.get("recommendations", []) %}
-          <li>{{ recommendation }}</li>
-        {% endfor %}
-      </ol>
+    <section>
+      <p class="ms-h6">Рекомендации</p>
+      <h2>Как действовать дальше</h2>
+      <ol>{% for recommendation in report.get("recommendations", []) %}<li>{{ recommendation }}</li>{% endfor %}</ol>
     </section>
 
     {% if aggregates.get("warnings") %}
-    <section class="section">
-      <div class="section-kicker">Warnings</div>
-      <h2>Предупреждения</h2>
-      {% for w in aggregates.get("warnings", []) %}
-        <div class="warning-banner">{{ w }}</div>
-      {% endfor %}
-    </section>
+      <section class="avoid-break">
+        <p class="ms-h6" style="color:var(--color-accent-2-700);">Внимание</p>
+        {% for warning in aggregates.get("warnings", []) %}<p class="warning" style="margin-bottom:8px;">{{ warning }}</p>{% endfor %}
+      </section>
     {% endif %}
 
-    <section class="section">
-      <div class="section-kicker">Campaign structure</div>
-      <h2>Структура кампании по кластерам</h2>
-      <table class="cluster-table">
-        <thead>
-          <tr>
-            <th>Кластер</th>
-            <th>Тип</th>
-            <th>Фраз</th>
-            <th>Бюджет</th>
-            <th>Доля</th>
-            <th>Минус-слова</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for cluster in aggregates.get("clusters", []) %}
-            <tr>
-              <td>
-                {{ cluster.get("title", "") }}
-                {% if cluster.get("is_center_of_gravity") %}<span class="badge-cog">⊙ ЦТ</span>{% endif %}
-              </td>
-              <td>
-                <span class="badge-type badge-type-{{ cluster.get('type', 'general') }}">
-                  {{ cluster.get("type", "") }}
-                </span>
-              </td>
-              <td class="number">{{ cluster.get("n_keys", 0) }}</td>
-              <td class="number">{{ cluster.get("allocated_budget", 0) | format_number }} руб.</td>
-              <td class="number">{{ "%.0f" | format(cluster.get("allocated_share", 0) * 100) }}%</td>
-              <td>
-                <div class="minus-chips">
-                  {% for w in cluster.get("minus_words", [])[:8] %}
-                    <span class="minus-chip">-{{ w }}</span>
-                  {% endfor %}
-                </div>
-              </td>
-            </tr>
-          {% else %}
-            <tr><td colspan="6" class="muted">Нет данных о кластерах.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <section class="avoid-break">
+      <p class="ms-h6">Ограничения прогноза</p>
+      <p style="font-style:italic; font-size:13px; opacity:0.72; max-width:660px;">{{ report.get("disclaimer", "") }}</p>
     </section>
 
-    <section class="section">
-      <div class="section-kicker">Budget distribution</div>
-      <h2>Распределение бюджета по топ-фразам</h2>
-      <div class="bars">
-        {% for item in top_keywords[:10] %}
-          {% set spending = item.get("spending", 0) | float %}
-          {% set bar_width = (spending / max_spending * 100) if max_spending > 0 else 0 %}
-          <div class="bar">
-            <div class="bar-label">{{ item.get("phrase", "") }}</div>
-            <div class="bar-track">
-              <div class="bar-fill" style="width: {{ "%.1f" | format(bar_width) }}%;"></div>
-            </div>
-            <div class="bar-value number">{{ spending | format_number }} руб.</div>
-          </div>
-        {% else %}
-          <p class="muted">Нет данных для распределения бюджета.</p>
-        {% endfor %}
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="section-kicker">Disclaimer</div>
-      <h2>Ограничения прогноза</h2>
-      <div class="disclaimer">
-        <p>{{ report.get("disclaimer", "") }}</p>
-      </div>
-    </section>
+    <div class="running-footer"><span>{{ region }}</span><span>{{ generated_at }}</span></div>
   </main>
 </body>
 </html>

@@ -14,7 +14,7 @@ from app.db.database import get_db
 from app.models.task import TERMINAL_STATUSES, TaskStatus
 from app.services.ai import generate_report
 from app.services.ai_mock import generate_report_mock
-from app.services.allocation import AllocationConfig
+from app.services.allocation import AllocationConfig, FORECAST_KEYWORD_LIMIT, METHODOLOGY_VERSION
 from app.services.keywords import _RU_STOPWORDS, normalize_phrase
 from app.services.direct import (
     CaptchaOrAuthError,
@@ -24,7 +24,7 @@ from app.services.direct import (
 )
 from app.services.direct_api import DirectApiClient, DirectApiError
 from app.services.direct_mock import MockDirectForecastClient
-from app.services.keywords import select_keywords
+from app.services.keywords import select_forecast_keywords, select_keywords
 from app.services.pdf import render_pdf
 from app.services.pdf_mock import render_pdf_mock
 from app.services.progress import set_progress
@@ -318,6 +318,8 @@ async def _build_forecast(
         )
         return list(forecast)
 
+    forecast_keywords = select_forecast_keywords(keywords, FORECAST_KEYWORD_LIMIT)
+
     if not await _transition_if_allowed(
         settings.DATABASE_PATH,
         task_id,
@@ -361,9 +363,9 @@ async def _build_forecast(
     try:
         async with sem:
             forecast_result = await client.forecast_keywords(
-                keywords,
+                forecast_keywords,
                 region_id,
-                batch_size=settings.DIRECT_BATCH_SIZE,
+                batch_size=min(settings.DIRECT_BATCH_SIZE, FORECAST_KEYWORD_LIMIT),
                 on_batch=on_batch,
             )
     except CaptchaOrAuthError as exc:
@@ -395,7 +397,11 @@ async def _build_report(
     forecast: list[dict],
 ) -> dict | None:
     report_result = await load_artifact(settings.DATABASE_PATH, task_id, "report_json")
-    if report_result is not None:
+    if (
+        report_result is not None
+        and isinstance(report_result, dict)
+        and report_result.get("methodology_version") == METHODOLOGY_VERSION
+    ):
         await _mark_stage_reached(settings, task_id, TaskStatus.generating_text)
         await set_progress(
             settings.REDIS_URL,
@@ -516,7 +522,13 @@ async def _render_report_pdf(
             headless=settings.PLAYWRIGHT_HEADLESS,
         )
     )
-    await save_artifact(settings.DATABASE_PATH, task_id, "pdf", None, path=rendered_path)
+    await save_artifact(
+        settings.DATABASE_PATH,
+        task_id,
+        "pdf",
+        {"methodology_version": METHODOLOGY_VERSION},
+        path=rendered_path,
+    )
     await set_progress(
         settings.REDIS_URL,
         task_id,
@@ -649,11 +661,20 @@ def _stage_rank(status: TaskStatus) -> int:
 async def _load_pdf_path(db_path: str, task_id: str) -> str | None:
     async with get_db(db_path) as db:
         cursor = await db.execute(
-            "SELECT path FROM artifacts WHERE task_id = ? AND kind = 'pdf'",
+            "SELECT payload, path FROM artifacts WHERE task_id = ? AND kind = 'pdf'",
             (task_id,),
         )
         row = await cursor.fetchone()
     if row is None or not row["path"]:
+        return None
+    if row["payload"]:
+        try:
+            payload = json.loads(row["payload"])
+        except json.JSONDecodeError:
+            return None
+        if payload.get("methodology_version") != METHODOLOGY_VERSION:
+            return None
+    else:
         return None
     return str(row["path"])
 

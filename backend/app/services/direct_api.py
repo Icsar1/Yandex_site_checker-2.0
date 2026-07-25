@@ -153,10 +153,10 @@ def _parse_forecast_data(data: Any) -> list[dict]:
 def _extract_row(phrase: str, item: dict) -> dict:
     shows = _to_int(item.get("Shows"))
     clicks = _to_int(item.get("FirstPlaceClicks"))
-    cpc = _to_float(item.get("Max"))          # max CPC in RUB for first-place guarantee
-    spending = round(clicks * cpc, 2)
+    first_place_cpc = _to_float(item.get("Max"))
+    spending = round(clicks * first_place_cpc, 2)
     ctr = _to_float(item.get("FirstPlaceCTR"))
-    avg_cpc = round(cpc, 2) if cpc else None
+    avg_cpc = round(first_place_cpc, 2) if first_place_cpc else None
 
     return {
         "phrase": phrase,
@@ -165,6 +165,11 @@ def _extract_row(phrase: str, item: dict) -> dict:
         "spending": spending,
         "ctr": ctr,
         "avg_cpc": avg_cpc,
+        "placement": "first_place_guarantee",
+        "first_place_cpc": avg_cpc,
+        "guarantee_min_cpc": _to_float(item.get("Min")),
+        "premium_min_cpc": _to_float(item.get("PremiumMin")),
+        "premium_max_cpc": _to_float(item.get("PremiumMax")),
     }
 
 

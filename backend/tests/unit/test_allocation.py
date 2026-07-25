@@ -127,24 +127,22 @@ def test_broad_cap() -> None:
             )
 
 
-def test_phrase_cap() -> None:
-    # 10 C1 phrases, phrase0 has 90× more clicks → water-fill must cap it at max_phrase_share
-    # (Requires n ≥ 7 so n × cap = 10×0.15=1.5 > 1, making the cap feasible)
+def test_phrase_rows_do_not_expose_budget_fields() -> None:
     from app.services.keywords import normalize_phrase as _np
     phrase_texts = [f"купить кухни вариант{i} угловые" for i in range(10)]
     keywords = [{"phrase": t, "freq": 100} for t in phrase_texts]
     forecast_idx = {
-        _np(t): {"clicks": 9000.0 if i == 0 else 100.0, "avg_cpc": 50.0, "ctr": 5.0}
+        _np(t): {"clicks": 9000.0 if i == 0 else 100.0, "impressions": 10000.0, "avg_cpc": 50.0, "ctr": 5.0}
         for i, t in enumerate(phrase_texts)
     }
     clusters = assign_clusters(keywords, _NICHE_STEMS, _GEO, _CFG)
     allocate_shares(clusters, _CFG, forecast_idx)
+
     for cluster in clusters:
-        for p in cluster.phrases:
-            ps = p.get("phrase_share", 0.0)
-            assert ps <= _CFG.max_phrase_share + 1e-6, (
-                f"Phrase {p['phrase']!r} share {ps:.4f} > {_CFG.max_phrase_share}"
-            )
+        for phrase in cluster.phrases:
+            assert "allocated_budget" not in phrase
+            assert "phrase_share" not in phrase
+            assert "spending" not in phrase
 
 
 def test_center_gets_largest_share() -> None:
@@ -241,7 +239,7 @@ def test_guardrails_warning_when_broad_dominates() -> None:
         n_keys=1, total_freq=500,
         allocated_share=0.5,
         allocated_budget=60000.0,
-        phrases=[{"phrase": "кухни", "freq": 500, "phrase_share": 0.5}],
+        phrases=[{"phrase": "кухни", "freq": 500}],
     )
     warnings = build_guardrails([cluster], _CFG)
     assert any("голый базис" in w for w in warnings), f"No guardrail warning: {warnings}"
@@ -267,7 +265,13 @@ def test_allocate_budget_e2e_structure() -> None:
     ]
     result = allocate_budget(keywords, forecast, "кухни", set(), _CFG)
 
-    assert result["total_budget"] == 120000.0
+    assert result["methodology_version"] == 3
+    assert result["total_budget"] == 60000.0
+    assert len(result["budget_scenarios"]) == 4
+    assert result["clean_cpc"]["value"] == 20.0
+    assert result["budget_scenarios"][1]["id"] == "recommended"
+    assert result["budget_scenarios"][1]["budget"] == 60000.0
+    assert any("минимального жизнеспособного" in warning for warning in result["warnings"])
     assert isinstance(result["clusters"], list)
     assert isinstance(result["warnings"], list)
     assert isinstance(result["top_phrases"], list)
@@ -279,9 +283,8 @@ def test_allocate_budget_e2e_total_matches() -> None:
     forecast: list[dict] = []
     result = allocate_budget(keywords, forecast, "кухни", set(), _CFG)
     total_budgeted = sum(c["allocated_budget"] for c in result["clusters"])
-    assert abs(total_budgeted - 120000.0) < 1.0, (
-        f"Total budgeted {total_budgeted} != 120000"
-    )
+    assert total_budgeted == 0.0
+    assert result["total_budget"] == 0.0
 
 
 def test_allocate_budget_broad_never_exceeds_cap() -> None:
@@ -295,3 +298,27 @@ def test_allocate_budget_broad_never_exceeds_cap() -> None:
                 f"C4 cluster {cluster['title']!r} share {cluster['allocated_share']:.4f} "
                 f"exceeds cap {_CFG.max_broad_share}"
             )
+
+
+def test_cross_minus_protects_commercial_core_words() -> None:
+    child = [decompose_phrase("ремонт кухни цена", extract_niche_stems("ремонт кухни"), set())]
+    parent = [decompose_phrase("ремонт кухни", extract_niche_stems("ремонт кухни"), set())]
+
+    minus = cross_minus(child, parent)
+
+    assert "цена" not in minus
+
+
+def test_recommended_budget_does_not_collapse_to_tiny_forecast_sum() -> None:
+    keywords = [
+        {"phrase": "ремонт квартир цена", "freq": 100, "score": 1.0, "priority": "high"},
+    ]
+    forecast = [
+        {"phrase": "ремонт квартир цена", "impressions": 100, "clicks": 10, "spending": 2000, "avg_cpc": 200, "ctr": 10.0},
+    ]
+
+    result = allocate_budget(keywords, forecast, "ремонт квартир", set(), _CFG)
+
+    assert result["recommended_budget"] == 60000.0
+    assert result["budget_scenarios"][0]["budget"] == 30000.0
+    assert result["budget_scenarios"][1]["budget"] == 60000.0

@@ -168,10 +168,17 @@ async def test_e2e_idempotent_retry_no_duplicate_calls(
         region: str,
         keywords: list[dict],
         forecast: list[dict],
+        **kwargs: object,
     ) -> dict:
         nonlocal report_calls
         report_calls += 1
-        return await original_generate_report_mock(niche, region, keywords, forecast)
+        return await original_generate_report_mock(
+            niche,
+            region,
+            keywords,
+            forecast,
+            **kwargs,
+        )
 
     async def fail_direct(
         self: object,

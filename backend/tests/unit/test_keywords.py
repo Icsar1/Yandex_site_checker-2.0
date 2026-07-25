@@ -7,6 +7,8 @@ from app.services.keywords import (
     parse_count_safe,
     score_keyword,
     select_keywords,
+    select_forecast_keywords,
+    classify_keyword_intent,
 )
 
 
@@ -114,3 +116,66 @@ def test_batch_keywords_uneven() -> None:
 
     assert len(batches) == 2
     assert [len(batch) for batch in batches] == [100, 50]
+
+
+def test_select_keywords_filters_conflicting_real_estate_purchase() -> None:
+    selected = select_keywords(
+        [
+            {"phrase": "купить квартиру без ремонта", "freq": 500},
+            {"phrase": "ремонт квартиры под ключ цена", "freq": 120},
+        ],
+        niche="ремонт квартир под ключ",
+    )
+
+    phrases = [keyword["phrase"] for keyword in selected]
+    assert "купить квартиру без ремонта" not in phrases
+    assert "ремонт квартиры под ключ цена" in phrases
+
+
+def test_classify_keyword_intent_marks_conflicting_purchase_object() -> None:
+    intent = classify_keyword_intent(
+        "купить квартиру в москве без ремонта",
+        niche="ремонт квартир под ключ",
+    )
+
+    assert intent["intent"] == "irrelevant"
+    assert intent["priority"] == "excluded"
+
+
+def test_select_forecast_keywords_keeps_priority_and_family_diversity() -> None:
+    keywords: list[dict] = []
+    for index in range(120):
+        keywords.append(
+            {
+                "phrase": f"ремонт квартир общий вариант {index}",
+                "freq": 1000 - index,
+                "score": 1.0 - index / 1000,
+                "priority": "high",
+            }
+        )
+    for index in range(30):
+        keywords.append(
+            {
+                "phrase": f"ремонт ванной комнаты хвост {index}",
+                "freq": 300 - index,
+                "score": 0.5 - index / 1000,
+                "priority": "medium",
+            }
+        )
+    for index in range(20):
+        keywords.append(
+            {
+                "phrase": f"ремонт кухни хвост {index}",
+                "freq": 200 - index,
+                "score": 0.3 - index / 1000,
+                "priority": "low",
+            }
+        )
+
+    selected = select_forecast_keywords(keywords, limit=100)
+    phrases = [str(item["phrase"]) for item in selected]
+
+    assert len(selected) == 100
+    assert any("ванной" in phrase for phrase in phrases)
+    assert any("кухни" in phrase for phrase in phrases)
+    assert sum(1 for item in selected if item["priority"] == "high") >= 60

@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 from jsonschema import ValidationError, validate
 
-from app.services.allocation import AllocationConfig, allocate_budget
+from app.services.allocation import AllocationConfig, METHODOLOGY_VERSION, allocate_budget
 from app.services.keywords import _RU_STOPWORDS, normalize_phrase
 
 
@@ -218,12 +218,19 @@ def compute_forecast_aggregates(
     ][:6]
 
     return {
+        "methodology_version": METHODOLOGY_VERSION,
         "n_keywords": len(keywords),
+        "forecasted_keywords": alloc.get("forecasted_keywords", 0),
+        "excluded_keywords": alloc.get("excluded_keywords", 0),
         "total_impressions": int(alloc["total_impressions"]),
         "total_clicks": alloc["total_clicks"],
         "total_spending": alloc["total_budget"],
+        "recommended_budget": alloc.get("recommended_budget", alloc["total_budget"]),
         "avg_cpc": alloc["avg_cpc"],
         "avg_ctr": alloc["avg_ctr"],
+        "clean_cpc": alloc.get("clean_cpc", {}),
+        "full_demand": alloc.get("full_demand", {}),
+        "budget_scenarios": alloc.get("budget_scenarios", []),
         "top_keywords": top_keywords,
         "keyword_clusters": keyword_clusters,
         "clusters": clusters,
@@ -242,7 +249,8 @@ def build_system_prompt() -> str:
         "3. Return ONLY valid JSON matching the provided schema.\n"
         "4. Write all text in Russian.\n"
         "5. The disclaimer field must state that numbers are forecasts and actual "
-        "results may vary."
+        "results may vary. "
+        "6. Treat recommended_budget as the starting budget, not as full market demand."
     )
 
 
@@ -252,28 +260,37 @@ def build_user_prompt(niche: str, region: str, aggregates: dict) -> str:
         warnings_block = "\nПРЕДУПРЕЖДЕНИЯ:\n" + "\n".join(aggregates["warnings"]) + "\n"
 
     clusters_block = _format_clusters(aggregates.get("clusters", []))
+    scenarios_block = _format_scenarios(aggregates.get("budget_scenarios", []))
+    full_demand = aggregates.get("full_demand", {}) or {}
+    clean_cpc = aggregates.get("clean_cpc", {}) or {}
 
     return (
         "=== ФАКТЫ (используй ТОЛЬКО эти числа) ===\n"
         f"Ниша: {niche}\n"
         f"Регион: {region}\n"
-        f"Количество ключевых фраз: {aggregates['n_keywords']}\n"
-        f"Общий бюджет кампании: {aggregates['total_spending']} руб.\n"
-        f"Суммарные показы: {aggregates['total_impressions']}\n"
-        f"Суммарные клики: {aggregates['total_clicks']}\n"
-        f"Средний CPC: {aggregates['avg_cpc']} руб.\n"
-        f"Средний CTR: {aggregates['avg_ctr']}%\n"
+        f"Методика: v{aggregates.get('methodology_version', METHODOLOGY_VERSION)}\n"
+        f"Собрано ключевых фраз: {aggregates['n_keywords']}\n"
+        f"Фраз в прогнозе: {aggregates.get('forecasted_keywords', 0)}\n"
+        f"Рекомендуемый стартовый бюджет: {aggregates.get('recommended_budget', aggregates.get('total_spending', 0))} руб.\n"
+        f"Полный спрос по очищенным фразам: {full_demand.get('budget_max', 0)} руб.\n"
+        f"Clean CPC: {clean_cpc.get('value', 0)} руб. ({clean_cpc.get('method', '')})\n"
+        f"Прогнозные показы для старта: {aggregates['total_impressions']}\n"
+        f"Прогнозные клики для старта: {aggregates['total_clicks']}\n"
+        f"Средний CPC старта: {aggregates['avg_cpc']} руб.\n"
+        f"Средний CTR старта: {aggregates['avg_ctr']}%\n"
+        f"\nСценарии бюджета:\n{scenarios_block}\n"
         f"{warnings_block}"
         "\n"
-        "Топ-10 ключей по бюджету:\n"
+        "Топ-10 фраз по прогнозному спросу:\n"
         f"{_format_top_keywords(aggregates.get('top_keywords', []))}\n"
         "\n"
         "Структура кластеров кампании:\n"
         f"{clusters_block}\n"
         "\n"
         "=== ЗАДАЧА ===\n"
-        "На основе ТОЛЬКО этих фактов создай JSON-отчёт по схеме:\n"
-        "- summary: обзор ниши, объём спроса, бюджет\n"
+        "На основе ТОЛЬКО этих фактов создай JSON-отчёт по схеме. "
+        "Не называй полный спрос рекомендуемым бюджетом и не увеличивай бюджет сверх сценариев.\n"
+        "- summary: объясни рекомендуемый старт, полный спрос и почему они различаются\n"
         "- groups: 3-6 смысловых групп ключевых слов с описанием и примерами\n"
         "- conclusions: 2-5 выводов\n"
         "- recommendations: 2-5 рекомендаций по запуску рекламы\n"
@@ -338,22 +355,11 @@ async def generate_report(
     content = _extract_message_content(response.json())
     parsed_report = _parse_report_content(content)
     _validate_report(parsed_report)
-    return {"report": parsed_report, "aggregates": aggregates}
-
-
-def _top_keywords_by_spending(forecast: list[dict]) -> list[dict]:
-    top_items = sorted(
-        forecast,
-        key=lambda item: _to_float(item.get("spending")),
-        reverse=True,
-    )[:10]
-    return [
-        {
-            "phrase": str(item.get("phrase") or ""),
-            "spending": round(_to_float(item.get("spending")), 2),
-        }
-        for item in top_items
-    ]
+    return {
+        "methodology_version": METHODOLOGY_VERSION,
+        "report": parsed_report,
+        "aggregates": aggregates,
+    }
 
 
 def _cluster_keywords(keywords: list[dict]) -> list[dict]:
@@ -393,12 +399,16 @@ def _first_significant_word(phrase: str) -> str:
 
 def _format_top_keywords(top_keywords: list[dict]) -> str:
     if not top_keywords:
-        return "- нет данных"
+        return "\u043d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445"
     lines = []
     for index, item in enumerate(top_keywords, start=1):
-        cog = " [ЦТ]" if item.get("is_center_of_gravity") else ""
+        cog = " [\u0426\u0422]" if item.get("is_center_of_gravity") else ""
+        priority = item.get("priority") or ""
         lines.append(
-            f"{index}. {item['phrase']}{cog} - {item.get('spending', 0):.0f} руб."
+            f"{index}. {item['phrase']}{cog} - "
+            f"{item.get('clicks', 0):.0f} \u043a\u043b\u0438\u043a\u043e\u0432, "
+            f"CPC {item.get('cpc', 0):.0f} \u0440\u0443\u0431., "
+            f"\u043f\u0440\u0438\u043e\u0440\u0438\u0442\u0435\u0442 {priority}"
         )
     return "\n".join(lines)
 
@@ -415,6 +425,20 @@ def _format_clusters(clusters: list[dict]) -> str:
             f"  [{c['type'].upper()}]{cog} «{c['title']}» — "
             f"{c['n_keys']} фраз, {c['allocated_budget']:.0f} руб. "
             f"({c['allocated_share']:.0%}){minus_str}"
+        )
+    return "\n".join(lines)
+
+
+def _format_scenarios(scenarios: list[dict]) -> str:
+    if not scenarios:
+        return "- нет данных"
+    lines = []
+    for item in scenarios:
+        lines.append(
+            f"- {item.get('title', item.get('id', 'scenario'))}: "
+            f"{item.get('budget', 0):.0f} руб., "
+            f"{item.get('clicks', 0):.0f} кликов, "
+            f"охват спроса {float(item.get('coverage') or 0) * 100:.0f}%"
         )
     return "\n".join(lines)
 

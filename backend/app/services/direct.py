@@ -123,7 +123,7 @@ class DirectForecastClient:
         locator = page.locator("input#geo.b-region-selector__geo")
         try:
             if await locator.count() > 0:
-                await locator.evaluate("(el, v) => el.value = v", region_value)
+                await self._set_input_value(locator, region_value)
                 return
         except Exception:
             pass
@@ -134,10 +134,22 @@ class DirectForecastClient:
             loc = page.locator(selector).first
             try:
                 if await loc.count() > 0:
-                    await loc.evaluate("(el, v) => el.value = v", region_value)
+                    await self._set_input_value(loc, region_value)
                     return
             except Exception:
                 continue
+
+    async def _set_input_value(self, locator: Any, value: str) -> None:
+        await locator.evaluate(
+            """
+            (el, v) => {
+                el.value = v;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            """,
+            value,
+        )
 
     async def _fill_keywords(self, page: Any, keywords: list[str]) -> None:
         keyword_text = "\n".join(keywords)

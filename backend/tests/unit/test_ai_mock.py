@@ -29,7 +29,8 @@ async def test_mock_generate_report_returns_valid_structure() -> None:
         _forecast(),
     )
 
-    assert set(result) == {"report", "aggregates"}
+    assert set(result) == {"methodology_version", "report", "aggregates"}
+    assert result["methodology_version"] == 3
     assert isinstance(result["report"], dict)
     assert isinstance(result["aggregates"], dict)
 
@@ -61,9 +62,9 @@ async def test_mock_report_uses_real_aggregates() -> None:
         _forecast(),
     )
 
-    # total_spending is now the fixed allocation budget (120000), not Yandex forecast sum
-    assert result["aggregates"]["total_spending"] == 120000.0
-    assert "120000" in result["report"]["summary"]
+    assert result["aggregates"]["methodology_version"] == 3
+    assert result["aggregates"]["total_spending"] == 60000.0
+    assert "60000" in result["report"]["summary"]
 
 
 @pytest.mark.asyncio

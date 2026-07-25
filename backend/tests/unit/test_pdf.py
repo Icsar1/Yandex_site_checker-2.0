@@ -54,10 +54,10 @@ def test_jinja2_template_renders_html() -> None:
     assert "мебель" in html
     assert "Москва" in html
     assert "12 345" in html
-    assert "cover" in html
-    assert "kpi-grid" in html
-    assert "forecast-table" in html
-    assert "disclaimer" in html
+    assert "report" in html
+    assert "stats" in html
+    assert "scenario-grid" in html
+    assert "Ограничения прогноза" in html
 
 
 def test_jinja2_template_renders_all_12_blocks() -> None:
@@ -68,21 +68,20 @@ def test_jinja2_template_renders_all_12_blocks() -> None:
         aggregates=_sample_aggregates(),
     )
 
-    for css_class in (
-        "cover",
+    for marker in (
         "running-header",
-        "summary-card",
-        "kpi-grid",
-        "forecast-table",
-        "group-card",
-        "kw-chip",
-        "list-conclusions",
-        "list-reco",
-        "bar",
-        "disclaimer",
-        "page-footer",
+        "running-footer",
+        "ms-h6",
+        "scenario-grid",
+        "table",
+        "cards",
+        "card-kicker",
+        "tag-neutral",
+        "budget-layout",
+        "donut",
+        "Ограничения прогноза",
     ):
-        assert css_class in html
+        assert marker in html
     assert "@page" in html
 
 
@@ -148,11 +147,11 @@ def _sample_report() -> dict:
         ],
         "conclusions": [
             "Есть выраженный спрос в регионе.",
-            "Бюджет концентрируется в верхних коммерческих фразах.",
+            "Бюджет концентрируется в верхних коммерческих кластерах.",
         ],
         "recommendations": [
             "Разделить кампании по группам фраз.",
-            "Начать с фраз с максимальным прогнозным бюджетом.",
+            "Начать с кластеров высокого приоритета.",
         ],
         "disclaimer": (
             "Все числа являются прогнозом, фактические результаты рекламной "
@@ -174,7 +173,6 @@ def _sample_aggregates() -> dict:
                 "phrase": "купить диван",
                 "impressions": 6000,
                 "clicks": 300,
-                "spending": 90000,
                 "ctr": 5.0,
                 "cpc": 300,
             },
@@ -182,7 +180,6 @@ def _sample_aggregates() -> dict:
                 "phrase": "диван цена",
                 "impressions": 4500,
                 "clicks": 250,
-                "spending": 60000,
                 "ctr": 5.56,
                 "cpc": 240,
             },

@@ -93,11 +93,35 @@ async def _get_pdf_path(db_path: str, task_id: str, output_dir: str) -> Path:
     return output / f"{task_id}.pdf"
 
 
+async def _resolve_region_label(settings: Settings, region_ids: list[int]) -> str | None:
+    if not region_ids:
+        return None
+    try:
+        client = _build_wordstat_client(settings)
+        regions = await client.get_regions_tree()
+    except Exception:
+        return None
+    names_by_id = {int(region["id"]): str(region["name"]) for region in regions}
+    labels = [names_by_id.get(int(region_id), str(region_id)) for region_id in region_ids]
+    label = ", ".join(label for label in labels if label)
+    return label or None
+
+
+def _is_raw_region_id_label(label: str | None, region_ids: list[int]) -> bool:
+    expected = ", ".join(str(region_id) for region_id in region_ids)
+    return not label or label == expected
+
+
 async def _build_task_response(
     request: Request,
     settings: Settings,
     task: dict[str, Any],
 ) -> TaskResponse:
+    if _is_raw_region_id_label(task.get("region_label"), task.get("region_ids") or []):
+        resolved_region = await _resolve_region_label(settings, task.get("region_ids") or [])
+        if resolved_region:
+            task["region_label"] = resolved_region
+
     download_url: str | None = None
     if task["status"] == TaskStatus.done.value:
         token = task.get("download_token")
@@ -169,6 +193,10 @@ async def create_public_task(
     request: Request,
 ) -> dict[str, str]:
     settings = _get_request_settings(request)
+    if _is_raw_region_id_label(payload.region_label, payload.region_ids):
+        resolved_region = await _resolve_region_label(settings, payload.region_ids)
+        if resolved_region:
+            payload = payload.model_copy(update={"region_label": resolved_region})
     task_id = await create_task(settings.DATABASE_PATH, payload)
     await add_task_event(
         settings.DATABASE_PATH,

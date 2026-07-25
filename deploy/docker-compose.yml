@@ -7,9 +7,9 @@ services:
       - ../.env
     environment:
       REDIS_URL: redis://redis:6379/0
-      DATABASE_PATH: data/tasks.db
-      PDF_OUTPUT_DIR: data/pdf
-      DIRECT_STORAGE_STATE: data/storage_state.json
+      DATABASE_PATH: /app/data/tasks.db
+      PDF_OUTPUT_DIR: /app/data/pdf
+      DIRECT_STORAGE_STATE: /app/data/storage_state.json
     volumes:
       - app_data:/app/data
     expose:
@@ -33,9 +33,9 @@ services:
       - ../.env
     environment:
       REDIS_URL: redis://redis:6379/0
-      DATABASE_PATH: data/tasks.db
-      PDF_OUTPUT_DIR: data/pdf
-      DIRECT_STORAGE_STATE: data/storage_state.json
+      DATABASE_PATH: /app/data/tasks.db
+      PDF_OUTPUT_DIR: /app/data/pdf
+      DIRECT_STORAGE_STATE: /app/data/storage_state.json
       PLAYWRIGHT_HEADLESS: "true"
     command: ["python", "-m", "arq", "app.worker.arq_app.WorkerSettings"]
     volumes:

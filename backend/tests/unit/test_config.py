@@ -36,4 +36,4 @@ def test_secret_fields_do_not_leak_values() -> None:
 def test_mock_yandex_defaults_to_true(monkeypatch) -> None:
     monkeypatch.delenv("MOCK_YANDEX", raising=False)
 
-    assert Settings().MOCK_YANDEX is True
+    assert Settings(_env_file=None).MOCK_YANDEX is True

@@ -21,8 +21,9 @@ async def startup(ctx: dict) -> None:
     """Re-enqueue orphaned tasks that are still in queued/processing states."""
     s = get_settings()
     try:
-        from app.db.database import get_db
+        from app.db.database import get_db, init_db
 
+        await init_db(s.DATABASE_PATH)
         async with get_db(s.DATABASE_PATH) as db:
             cursor = await db.execute(
                 "SELECT id FROM tasks WHERE status IN ('queued', 'collecting_keys', 'forecasting', 'generating_text', 'rendering_pdf') AND started_at IS NULL"
