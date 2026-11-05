@@ -93,6 +93,62 @@ _REVIEW_MARKERS = {
     "форум",
 }
 
+IntentCategory = Literal["commercial", "informational", "mixed"]
+
+COMMERCIAL_INTENT_MARKERS = COMMERCIAL_MARKERS | {
+    "клиника",
+    "записаться",
+    "запись",
+    "сделать",
+    "консультация",
+    "прием",
+    "приём",
+    "врач",
+}
+
+INFORMATIONAL_INTENT_MARKERS = {
+    "симптомы",
+    "симптом",
+    "причины",
+    "причина",
+    "признаки",
+    "диагноз",
+    "диагностика",
+    "как лечить",
+    "чем лечить",
+    "лечение в домашних условиях",
+    "народные средства",
+    "самостоятельно",
+    "упражнения",
+    "что делать при",
+    "что такое",
+    "как понять",
+    "как определить",
+    "без операции",
+    "профилактика",
+}
+
+
+def classify_intent_category(phrase: str) -> IntentCategory:
+    """Классифицирует фразу по готовности купить услугу vs симптомы/диагностика/
+    самостоятельное лечение — независимо от приоритетной классификации
+    ``classify_keyword_intent`` (та решает, включать ли фразу в ядро вообще)."""
+    normalized = normalize_phrase(phrase)
+    tokens = set(normalized.split())
+    has_commercial = any(
+        _marker_matches(normalized, tokens, marker) for marker in COMMERCIAL_INTENT_MARKERS
+    )
+    has_informational = any(
+        _marker_matches(normalized, tokens, marker) for marker in INFORMATIONAL_INTENT_MARKERS
+    )
+    if has_commercial and has_informational:
+        return "mixed"
+    if has_commercial:
+        return "commercial"
+    if has_informational:
+        return "informational"
+    return "mixed"
+
 
 def parse_count_safe(value: str | int) -> int:
     if isinstance(value, int):

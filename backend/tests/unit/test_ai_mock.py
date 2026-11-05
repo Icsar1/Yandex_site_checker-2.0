@@ -63,8 +63,8 @@ async def test_mock_report_uses_real_aggregates() -> None:
     )
 
     assert result["aggregates"]["methodology_version"] == 3
-    assert result["aggregates"]["total_spending"] == 60000.0
-    assert "60000" in result["report"]["summary"]
+    assert result["aggregates"]["total_spending"] == 500.0
+    assert "500" in result["report"]["summary"]
 
 
 @pytest.mark.asyncio

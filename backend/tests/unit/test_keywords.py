@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from app.services.keywords import (
     batch_keywords,
+    classify_intent_category,
+    classify_keyword_intent,
     is_garbage,
     normalize_phrase,
     parse_count_safe,
     score_keyword,
     select_keywords,
     select_forecast_keywords,
-    classify_keyword_intent,
 )
 
 
@@ -179,3 +180,21 @@ def test_select_forecast_keywords_keeps_priority_and_family_diversity() -> None:
     assert any("ванной" in phrase for phrase in phrases)
     assert any("кухни" in phrase for phrase in phrases)
     assert sum(1 for item in selected if item["priority"] == "high") >= 60
+
+
+def test_classify_intent_category_commercial() -> None:
+    assert classify_intent_category("коррекция губ цена") == "commercial"
+    assert classify_intent_category("записаться на консультацию") == "commercial"
+
+
+def test_classify_intent_category_informational() -> None:
+    assert classify_intent_category("симптомы опущения матки") == "informational"
+    assert classify_intent_category("упражнения кегеля самостоятельно") == "informational"
+
+
+def test_classify_intent_category_mixed_when_both_present() -> None:
+    assert classify_intent_category("симптомы и стоимость лечения") == "mixed"
+
+
+def test_classify_intent_category_mixed_when_no_markers() -> None:
+    assert classify_intent_category("интимная пластика") == "mixed"

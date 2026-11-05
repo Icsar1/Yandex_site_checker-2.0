@@ -6,11 +6,15 @@ from app.services.allocation import (
     adjusted_cpc,
     allocate_budget,
     allocate_shares,
+    apply_lead_forecast,
+    apply_rsya_forecast,
     assign_clusters,
     build_guardrails,
     cross_minus,
     decompose_phrase,
     detect_center_of_gravity,
+    is_statistically_significant,
+    validate_minus_words,
 )
 from app.services.keywords import extract_niche_stems
 
@@ -266,12 +270,11 @@ def test_allocate_budget_e2e_structure() -> None:
     result = allocate_budget(keywords, forecast, "кухни", set(), _CFG)
 
     assert result["methodology_version"] == 3
-    assert result["total_budget"] == 60000.0
+    assert result["total_budget"] == 2000.0
     assert len(result["budget_scenarios"]) == 4
     assert result["clean_cpc"]["value"] == 20.0
     assert result["budget_scenarios"][1]["id"] == "recommended"
-    assert result["budget_scenarios"][1]["budget"] == 60000.0
-    assert any("минимального жизнеспособного" in warning for warning in result["warnings"])
+    assert result["budget_scenarios"][1]["budget"] == 2000.0
     assert isinstance(result["clusters"], list)
     assert isinstance(result["warnings"], list)
     assert isinstance(result["top_phrases"], list)
@@ -309,7 +312,7 @@ def test_cross_minus_protects_commercial_core_words() -> None:
     assert "цена" not in minus
 
 
-def test_recommended_budget_does_not_collapse_to_tiny_forecast_sum() -> None:
+def test_recommended_budget_is_clicks_times_clean_cpc() -> None:
     keywords = [
         {"phrase": "ремонт квартир цена", "freq": 100, "score": 1.0, "priority": "high"},
     ]
@@ -319,6 +322,316 @@ def test_recommended_budget_does_not_collapse_to_tiny_forecast_sum() -> None:
 
     result = allocate_budget(keywords, forecast, "ремонт квартир", set(), _CFG)
 
-    assert result["recommended_budget"] == 60000.0
-    assert result["budget_scenarios"][0]["budget"] == 30000.0
-    assert result["budget_scenarios"][1]["budget"] == 60000.0
+    # No artificial minimum-budget floor: budget = target_clicks * clean_cpc.
+    assert result["recommended_budget"] == 100 * 200.0
+    assert result["budget_scenarios"][0]["budget"] == 50 * 200.0
+    assert result["budget_scenarios"][1]["budget"] == 100 * 200.0
+
+
+def test_is_statistically_significant_threshold() -> None:
+    assert is_statistically_significant(30, 1000) is True
+    assert is_statistically_significant(29, 1000) is False
+    assert is_statistically_significant(2, 2) is False  # 2 clicks -> "100% CTR" noise
+
+
+def test_low_click_phrase_ctr_flagged_as_not_significant() -> None:
+    # Regression: top-10 table must not present a 100% CTR computed from 2 clicks
+    # as a reliable figure.
+    keywords = [{"phrase": "купить кухни угловые", "freq": 100}]
+    forecast = [
+        {"phrase": "купить кухни угловые", "impressions": 2, "clicks": 2, "avg_cpc": 80.0, "ctr": 100.0},
+    ]
+
+    result = allocate_budget(keywords, forecast, "кухни", set(), _CFG)
+    phrase = next(p for p in result["top_phrases"] if p["phrase"] == "купить кухни угловые")
+
+    assert phrase["ctr_significant"] is False
+
+
+def test_scenario_budget_exceeding_demand_is_not_reported_as_100_percent() -> None:
+    # Regression for the "стартовый бюджет покрывает 100% спроса" bug: when the
+    # click-based scenario budget vastly exceeds the collected phrase
+    # demand (2k), the scenario must NOT silently report 100% coverage.
+    keywords = [
+        {"phrase": "ремонт квартир цена", "freq": 100, "score": 1.0, "priority": "high"},
+    ]
+    forecast = [
+        {"phrase": "ремонт квартир цена", "impressions": 100, "clicks": 10, "spending": 2000, "avg_cpc": 200, "ctr": 10.0},
+    ]
+
+    result = allocate_budget(keywords, forecast, "ремонт квартир", set(), _CFG)
+    recommended = result["budget_scenarios"][1]
+
+    assert recommended["id"] == "recommended"
+    assert recommended["budget"] == 100 * 200.0
+    assert recommended["demand_full_rub"] == result["full_demand"]["budget_max"]
+    assert recommended["exceeds_demand"] is True
+    assert recommended["exceeds_demand_ratio"] >= 3.0
+    # pct_of_demand must reflect the real (large) overshoot, never clipped to 100
+    assert recommended["pct_of_demand"] > 100.0
+    assert any(
+        "минимально жизнеспособном уровне" in warning
+        and "спроса" in warning
+        for warning in result["warnings"]
+    )
+
+
+def test_scenario_budget_range_uses_forecast_error_margin() -> None:
+    keywords = [
+        {"phrase": "ремонт квартир цена", "freq": 100, "score": 1.0, "priority": "high"},
+    ]
+    forecast = [
+        {"phrase": "ремонт квартир цена", "impressions": 1000, "clicks": 100, "spending": 20000, "avg_cpc": 200, "ctr": 10.0},
+    ]
+    cfg = AllocationConfig(forecast_error_margin=0.3)
+
+    result = allocate_budget(keywords, forecast, "ремонт квартир", set(), cfg)
+
+    assert result["forecast_error_margin"] == 0.3
+    assert result["full_demand"]["forecast_error_margin"] == 0.3
+    recommended = next(s for s in result["budget_scenarios"] if s["id"] == "recommended")
+    budget = recommended["budget"]
+    assert recommended["budget_low"] == round(budget * 0.7, 2)
+    assert recommended["budget_high"] == round(budget * 1.3, 2)
+
+
+def test_validate_minus_words_flags_conflict_with_active_phrase() -> None:
+    # Regression for the "минус-слово 'губ' при наличии фразы 'коррекция губ'" bug:
+    # a minus word must never be auto-applied if it would suppress another
+    # cluster's own active phrase.
+    clean, review = validate_minus_words(["губ", "цена"], ["коррекция губ отзывы"])
+    assert clean == ["цена"]
+    assert review == ["губ"]
+
+
+def test_validate_minus_words_no_conflict_passes_through() -> None:
+    clean, review = validate_minus_words(["акция"], ["коррекция губ отзывы"])
+    assert clean == ["акция"]
+    assert review == []
+
+
+def test_cluster_minus_words_conflicting_with_sibling_go_to_review() -> None:
+    # End-to-end reproduction of the TZ example: "увеличение губ" and "коррекция
+    # губ" fall into different clusters (neither matches the broad niche stems),
+    # so a naive cross-minus would suppress "губ" for one cluster while the other
+    # cluster still actively targets a phrase containing "губ".
+    niche = "интимная пластика"
+    keywords = [
+        {"phrase": "увеличение губ цена", "freq": 100, "priority": "high"},
+        {"phrase": "коррекция губ отзывы", "freq": 100, "priority": "medium"},
+    ]
+    forecast = [
+        {"phrase": "увеличение губ цена", "impressions": 1000, "clicks": 100, "spending": 20000, "avg_cpc": 200, "ctr": 10.0},
+        {"phrase": "коррекция губ отзывы", "impressions": 1000, "clicks": 100, "spending": 20000, "avg_cpc": 200, "ctr": 10.0},
+    ]
+
+    result = allocate_budget(keywords, forecast, niche, set(), AllocationConfig())
+
+    for cluster in result["clusters"]:
+        assert "губ" not in cluster["minus_words"], (
+            f"'губ' leaked into minus_words for {cluster['title']!r}, "
+            "would suppress a sibling cluster's active phrase"
+        )
+        assert "губ" in cluster["minus_words_review"]
+
+
+def test_cluster_title_is_human_readable_not_internal_id() -> None:
+    # Regression: clusters whose phrases don't match the niche basis used to be
+    # titled with the raw internal identifier, e.g. "__nb_C3 / characteristic".
+    niche = "интимная пластика"
+    keywords = [{"phrase": "коррекция губ отзывы", "freq": 100, "priority": "medium"}]
+
+    result = allocate_budget(keywords, [], niche, set(), AllocationConfig())
+
+    for cluster in result["clusters"]:
+        assert not cluster["title"].startswith("__nb_"), cluster["title"]
+        assert "/" not in cluster["title"]
+
+
+def test_allocate_budget_intent_breakdown_reflects_demand_shares() -> None:
+    keywords = [
+        {"phrase": "интимная пластика цена", "freq": 100, "priority": "high"},
+        {"phrase": "симптомы опущения матки", "freq": 100, "priority": "medium"},
+    ]
+    forecast = [
+        {"phrase": "интимная пластика цена", "impressions": 1000, "clicks": 50, "spending": 30000, "avg_cpc": 200, "ctr": 5.0},
+        {"phrase": "симптомы опущения матки", "impressions": 1000, "clicks": 50, "spending": 10000, "avg_cpc": 200, "ctr": 5.0},
+    ]
+
+    result = allocate_budget(keywords, forecast, "интимная пластика", set(), AllocationConfig())
+
+    breakdown = result["intent_breakdown"]
+    assert breakdown["commercial"]["demand_rub"] == 30000.0
+    assert breakdown["informational"]["demand_rub"] == 10000.0
+    assert breakdown["informational"]["share"] == 0.25
+
+
+def test_allocate_budget_warns_when_informational_share_exceeds_threshold() -> None:
+    keywords = [
+        {"phrase": "интимная пластика цена", "freq": 100, "priority": "high"},
+        {"phrase": "симптомы опущения матки", "freq": 100, "priority": "medium"},
+    ]
+    forecast = [
+        {"phrase": "интимная пластика цена", "impressions": 1000, "clicks": 50, "spending": 10000, "avg_cpc": 200, "ctr": 5.0},
+        {"phrase": "симптомы опущения матки", "impressions": 1000, "clicks": 50, "spending": 20000, "avg_cpc": 200, "ctr": 5.0},
+    ]
+    cfg = AllocationConfig(informational_share_warn_threshold=0.30)
+
+    result = allocate_budget(keywords, forecast, "интимная пластика", set(), cfg)
+
+    assert any("информационных запросов" in w for w in result["warnings"])
+
+
+def test_allocate_budget_excludes_informational_phrases_when_configured() -> None:
+    keywords = [
+        {"phrase": "интимная пластика цена", "freq": 100, "priority": "high"},
+        {"phrase": "симптомы опущения матки", "freq": 100, "priority": "medium"},
+    ]
+    forecast = [
+        {"phrase": "интимная пластика цена", "impressions": 1000, "clicks": 50, "spending": 10000, "avg_cpc": 200, "ctr": 5.0},
+        {"phrase": "симптомы опущения матки", "impressions": 1000, "clicks": 50, "spending": 20000, "avg_cpc": 200, "ctr": 5.0},
+    ]
+    cfg = AllocationConfig(exclude_informational_phrases=True)
+
+    result = allocate_budget(keywords, forecast, "интимная пластика", set(), cfg)
+
+    phrases_in_clusters = {p["phrase"] for c in result["clusters"] for p in c["phrases"]}
+    assert "симптомы опущения матки" not in phrases_in_clusters
+    assert "интимная пластика цена" in phrases_in_clusters
+
+
+def test_scenario_budget_range_zero_margin_collapses_to_point_estimate() -> None:
+    keywords = [
+        {"phrase": "ремонт квартир цена", "freq": 100, "score": 1.0, "priority": "high"},
+    ]
+    forecast = [
+        {"phrase": "ремонт квартир цена", "impressions": 1000, "clicks": 100, "spending": 20000, "avg_cpc": 200, "ctr": 10.0},
+    ]
+    cfg = AllocationConfig(forecast_error_margin=0.0)
+
+    result = allocate_budget(keywords, forecast, "ремонт квартир", set(), cfg)
+    recommended = next(s for s in result["budget_scenarios"] if s["id"] == "recommended")
+
+    assert recommended["budget_low"] == recommended["budget"]
+    assert recommended["budget_high"] == recommended["budget"]
+
+
+def test_apply_lead_forecast_with_explicit_conversion_rate() -> None:
+    scenarios = [{"id": "recommended", "budget": 10000.0, "clicks": 100.0}]
+
+    result = apply_lead_forecast(scenarios, expected_conversion_rate=0.05)
+
+    assert result[0]["cr_is_estimated"] is False
+    assert result[0]["leads"] == 5.0
+    assert result[0]["cpl"] == 2000.0
+
+
+def test_apply_lead_forecast_without_conversion_rate_uses_benchmark_range() -> None:
+    scenarios = [{"id": "recommended", "budget": 10000.0, "clicks": 100.0}]
+
+    result = apply_lead_forecast(
+        scenarios, expected_conversion_rate=None, cr_benchmark_low=0.02, cr_benchmark_high=0.05
+    )
+
+    assert result[0]["cr_is_estimated"] is True
+    assert result[0]["leads_low"] == 2.0
+    assert result[0]["leads_high"] == 5.0
+    assert result[0]["cpl_low"] == 2000.0
+    assert result[0]["cpl_high"] == 5000.0
+    assert "leads" not in result[0]
+
+
+def test_apply_lead_forecast_zero_clicks_gives_none_cpl() -> None:
+    scenarios = [{"id": "cautious", "budget": 0.0, "clicks": 0.0}]
+
+    result = apply_lead_forecast(scenarios, expected_conversion_rate=0.05)
+
+    assert result[0]["leads"] == 0.0
+    assert result[0]["cpl"] is None
+
+
+def test_allocate_budget_wires_lead_forecast_into_scenarios() -> None:
+    keywords = [
+        {"phrase": "ремонт квартир цена", "freq": 100, "score": 1.0, "priority": "high"},
+    ]
+    forecast = [
+        {"phrase": "ремонт квартир цена", "impressions": 1000, "clicks": 100, "spending": 20000, "avg_cpc": 200, "ctr": 10.0},
+    ]
+    cfg = AllocationConfig(expected_conversion_rate=0.1)
+
+    result = allocate_budget(keywords, forecast, "ремонт квартир", set(), cfg)
+    recommended = next(s for s in result["budget_scenarios"] if s["id"] == "recommended")
+
+    assert recommended["cr_is_estimated"] is False
+    assert recommended["leads"] == recommended["clicks"] * 0.1
+
+
+def test_allocate_budget_produces_multiple_clusters_with_distinct_priority_and_share() -> None:
+    keywords = [
+        {"phrase": "увеличение губ цена", "freq": 500, "score": 1.0, "priority": "high"},
+        {"phrase": "увеличение губ купить", "freq": 300, "score": 0.9, "priority": "high"},
+        {"phrase": "коррекция губ отзывы", "freq": 200, "score": 0.8, "priority": "medium"},
+    ]
+    forecast = [
+        {"phrase": kw["phrase"], "impressions": 1000, "clicks": 50, "spending": 5000, "avg_cpc": 100, "ctr": 5.0}
+        for kw in keywords
+    ]
+
+    result = allocate_budget(keywords, forecast, "интимная пластика", set(), AllocationConfig())
+    clusters = result["clusters"]
+
+    assert len(clusters) > 1
+    priorities = {c["priority"] for c in clusters}
+    shares = {c["allocated_share"] for c in clusters}
+    assert len(priorities) > 1 or len(shares) > 1
+    assert all(c["title"] != "" for c in clusters)
+
+
+def test_apply_rsya_forecast_derives_cpm_and_reach_from_search_cpc() -> None:
+    scenarios = [{"id": "recommended", "title": "Рекомендуемый", "budget": 10000.0}]
+
+    result = apply_rsya_forecast(
+        scenarios, search_clean_cpc=100.0, rsya_cpc_factor=0.4, rsya_ctr_pct=0.2
+    )
+
+    rsya_cpc = 100.0 * 0.4
+    expected_cpm = rsya_cpc * 0.2 * 10
+    assert result[0]["cpc"] == round(rsya_cpc, 2)
+    assert result[0]["cpm"] == round(expected_cpm, 2)
+    assert result[0]["clicks"] == round(10000.0 / rsya_cpc)
+    assert result[0]["reach"] > result[0]["clicks"]
+
+
+def test_apply_rsya_forecast_zero_cpc_gives_zero_metrics() -> None:
+    scenarios = [{"id": "recommended", "title": "Рекомендуемый", "budget": 10000.0}]
+
+    result = apply_rsya_forecast(scenarios, search_clean_cpc=0.0)
+
+    assert result[0]["cpm"] == 0.0
+    assert result[0]["clicks"] == 0
+    assert result[0]["reach"] == 0
+
+
+def test_allocate_budget_default_campaign_type_has_no_rsya_forecast() -> None:
+    keywords = [{"phrase": "ремонт квартир цена", "freq": 100, "score": 1.0, "priority": "high"}]
+    forecast = [
+        {"phrase": "ремонт квартир цена", "impressions": 1000, "clicks": 100, "spending": 20000, "avg_cpc": 200, "ctr": 10.0},
+    ]
+
+    result = allocate_budget(keywords, forecast, "ремонт квартир", set(), AllocationConfig())
+
+    assert result["campaign_type"] == "search"
+    assert result["rsya_forecast"] == []
+
+
+def test_allocate_budget_both_campaign_type_produces_rsya_forecast() -> None:
+    keywords = [{"phrase": "ремонт квартир цена", "freq": 100, "score": 1.0, "priority": "high"}]
+    forecast = [
+        {"phrase": "ремонт квартир цена", "impressions": 1000, "clicks": 100, "spending": 20000, "avg_cpc": 200, "ctr": 10.0},
+    ]
+    cfg = AllocationConfig(campaign_type="both")
+
+    result = allocate_budget(keywords, forecast, "ремонт квартир", set(), cfg)
+
+    assert result["rsya_forecast"]
+    assert all("cpm" in item and "reach" in item for item in result["rsya_forecast"])

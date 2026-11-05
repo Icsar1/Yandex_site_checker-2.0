@@ -252,6 +252,13 @@ async def _collect_keywords(
         if m and m.strip()
     ]
     masks = [m for m in masks if m] or [niche]
+    # Always query the raw niche phrase too: AI-generated masks are sometimes
+    # too generic (e.g. "физиотерапия после родов") and Wordstat returns broad
+    # off-topic noise for them, which the relevance filter then strips down to
+    # near-zero results even though the niche itself has plenty of good matches.
+    niche_key = niche.strip().lower()
+    if niche_key and niche_key not in masks:
+        masks.append(niche_key)
     raw_keywords: list[dict[str, int | str]] = []
     first_error: PipelineError | None = None
     for mask in masks:
@@ -435,7 +442,9 @@ async def _build_report(
     try:
         result = (
             await generate_report_mock(niche, region, keywords, forecast,
-                                       geo_tokens=geo_tokens, config=alloc_cfg)
+                                       geo_tokens=geo_tokens, config=alloc_cfg,
+                                       forecast_period=settings.FORECAST_PERIOD_LABEL,
+                                       seasonality_note=settings.SEASONALITY_NOTE)
             if settings.MOCK_YANDEX
             else await generate_report(
                 niche,
@@ -450,6 +459,8 @@ async def _build_report(
                 timeout=settings.YANDEX_GPT_TIMEOUT_S,
                 geo_tokens=geo_tokens,
                 config=alloc_cfg,
+                forecast_period=settings.FORECAST_PERIOD_LABEL,
+                seasonality_note=settings.SEASONALITY_NOTE,
             )
         )
     except httpx.HTTPStatusError as exc:

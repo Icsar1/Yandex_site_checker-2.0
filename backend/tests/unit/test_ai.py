@@ -7,6 +7,7 @@ import pytest
 from jsonschema import Draft7Validator, validate
 
 from app.services import ai as ai_module
+from app.services.allocation import AllocationConfig
 from app.services.ai import (
     REPORT_JSON_SCHEMA,
     build_system_prompt,
@@ -48,6 +49,60 @@ def _patch_masks_client(
     monkeypatch.setattr(ai_module.httpx, "AsyncClient", StubAsyncClient)
 
 
+@pytest.mark.asyncio
+async def test_generate_search_masks_splits_crammed_quoted_phrases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    crammed = (
+        '"увеличение губ купить", \n"увеличение губ заказать", '
+        '\n"увеличение губ под ключ", \n.ценовые.  \n"аугме'
+    )
+    _patch_masks_client(monkeypatch, json.dumps({"masks": [crammed]}))
+
+    result = await generate_search_masks(
+        "cosmetology",
+        base_url="https://example.test",
+        api_key="key",
+        folder_id="folder",
+    )
+
+    assert result
+    for mask in result:
+        assert '"' not in mask
+        assert "\n" not in mask
+        assert ":" not in mask
+        assert ";" not in mask
+    assert "увеличение губ купить" in result
+    assert "увеличение губ заказать" in result
+    assert "увеличение губ под ключ" in result
+
+
+@pytest.mark.asyncio
+async def test_generate_search_masks_splits_crammed_category_phrases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    crammed = (
+        "ценовые: пластика интимная цена, стоимость интимной пластики, "
+        "интимная пластика смета. синонимы: кор"
+    )
+    _patch_masks_client(monkeypatch, json.dumps({"masks": [crammed]}))
+
+    result = await generate_search_masks(
+        "cosmetology",
+        base_url="https://example.test",
+        api_key="key",
+        folder_id="folder",
+    )
+
+    assert result
+    assert len(result) > 1
+    for mask in result:
+        assert "," not in mask
+        assert ":" not in mask
+    assert "пластика интимная цена" in result
+    assert "стоимость интимной пластики" in result
+
+
 def test_compute_forecast_aggregates_correct_sums() -> None:
     keywords = [
         {"phrase": "купить диван", "freq": 100, "score": 0.9},
@@ -64,7 +119,7 @@ def test_compute_forecast_aggregates_correct_sums() -> None:
 
     assert result["n_keywords"] == 2
     assert result["methodology_version"] == 3
-    assert result["total_spending"] == 60000.0
+    assert result["total_spending"] == 1000.0
     assert len(result["budget_scenarios"]) == 4
     # clusters and warnings are present
     assert "clusters" in result
@@ -173,6 +228,75 @@ def test_compute_forecast_aggregates_zero_clicks() -> None:
 
     assert result["avg_cpc"] == 0
     assert result["avg_ctr"] == 0.0
+
+
+def test_compute_forecast_aggregates_default_forecast_period_and_seasonality() -> None:
+    result = compute_forecast_aggregates([], [])
+
+    assert result["forecast_period"]
+    assert "сезонность" in result["seasonality_note"].lower()
+
+
+def test_compute_forecast_aggregates_custom_forecast_period_and_seasonality() -> None:
+    result = compute_forecast_aggregates(
+        [], [],
+        forecast_period="01.06.2026-31.07.2026",
+        seasonality_note="учтён летний спад спроса",
+    )
+
+    assert result["forecast_period"] == "01.06.2026-31.07.2026"
+    assert result["seasonality_note"] == "учтён летний спад спроса"
+
+
+def test_compute_forecast_aggregates_flags_regulated_niche() -> None:
+    result = compute_forecast_aggregates([], [], niche="интимная пластика")
+
+    assert result["regulated_category"] is not None
+    assert result["regulated_category"]["id"] == "medicine"
+    assert result["regulated_category"]["required_documents"]
+
+
+def test_compute_forecast_aggregates_no_category_for_neutral_niche() -> None:
+    result = compute_forecast_aggregates([], [], niche="кухни на заказ")
+
+    assert result["regulated_category"] is None
+
+
+def test_compute_forecast_aggregates_estimates_leads_without_cr() -> None:
+    result = compute_forecast_aggregates(
+        [{"phrase": "купить диван", "impressions": 1000, "clicks": 100, "spending": 20000, "avg_cpc": 200, "ctr": 10.0}],
+        [{"phrase": "купить диван", "freq": 100, "score": 0.9, "priority": "high"}],
+    )
+
+    assert result["cr_is_estimated"] is True
+    recommended = next(s for s in result["budget_scenarios"] if s["id"] == "recommended")
+    assert recommended["leads_low"] is not None
+    assert recommended["cpl_low"] is not None
+
+
+def test_compute_forecast_aggregates_exact_leads_with_cr() -> None:
+    cfg = AllocationConfig(expected_conversion_rate=0.05)
+    result = compute_forecast_aggregates(
+        [{"phrase": "купить диван", "impressions": 1000, "clicks": 100, "spending": 20000, "avg_cpc": 200, "ctr": 10.0}],
+        [{"phrase": "купить диван", "freq": 100, "score": 0.9, "priority": "high"}],
+        config=cfg,
+    )
+
+    assert result["cr_is_estimated"] is False
+    recommended = next(s for s in result["budget_scenarios"] if s["id"] == "recommended")
+    assert recommended["leads"] == recommended["clicks"] * 0.05
+
+
+def test_compute_forecast_aggregates_rsya_campaign_type_wires_rsya_forecast() -> None:
+    cfg = AllocationConfig(campaign_type="rsya")
+    result = compute_forecast_aggregates(
+        [{"phrase": "купить диван", "impressions": 1000, "clicks": 100, "spending": 20000, "avg_cpc": 200, "ctr": 10.0}],
+        [{"phrase": "купить диван", "freq": 100, "score": 0.9, "priority": "high"}],
+        config=cfg,
+    )
+
+    assert result["campaign_type"] == "rsya"
+    assert result["rsya_forecast"]
 
 
 def test_build_system_prompt_contains_rules() -> None:

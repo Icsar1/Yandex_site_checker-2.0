@@ -34,8 +34,12 @@ async def generate_report_mock(
     forecast: list[dict],
     geo_tokens: set[str] | None = None,
     config: AllocationConfig | None = None,
+    forecast_period: str = "последние ~60 дней (данные Яндекс Wordstat/Forecast API)",
+    seasonality_note: str = "сезонность не учтена в данном прогнозе",
 ) -> dict:
-    aggregates = compute_forecast_aggregates(forecast, keywords, niche, geo_tokens, config)
+    aggregates = compute_forecast_aggregates(
+        forecast, keywords, niche, geo_tokens, config, forecast_period, seasonality_note
+    )
     report = {
         "summary": (
             f"Для ниши «{niche}» в регионе «{region}» подобрано "

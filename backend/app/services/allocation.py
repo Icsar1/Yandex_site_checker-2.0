@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -7,6 +8,7 @@ from app.services.keywords import (
     COMMERCIAL_MARKERS,
     _RU_STOPWORDS,
     _marker_matches,
+    classify_intent_category,
     extract_niche_stems,
     normalize_phrase,
 )
@@ -44,28 +46,24 @@ _SCENARIO_DEFS = (
         "id": "cautious",
         "title": "Осторожный старт",
         "target_clicks": 50,
-        "min_budget": 30000.0,
         "priorities": {"high"},
     },
     {
         "id": "recommended",
         "title": "Рекомендуемый старт",
         "target_clicks": 100,
-        "min_budget": 60000.0,
         "priorities": {"high", "medium"},
     },
     {
         "id": "confident",
         "title": "Уверенный запуск",
         "target_clicks": 150,
-        "min_budget": 100000.0,
         "priorities": {"high", "medium", "low"},
     },
     {
         "id": "full",
         "title": "Полный спрос",
         "target_clicks": None,
-        "min_budget": 0.0,
         "priorities": {"high", "medium", "low"},
     },
 )
@@ -93,6 +91,7 @@ class ClusterResult:
     allocated_share: float = 0.0
     allocated_budget: float = 0.0
     minus_words: list[str] = field(default_factory=list)
+    minus_words_review: list[str] = field(default_factory=list)
     phrases: list[dict] = field(default_factory=list)
 
 
@@ -108,9 +107,19 @@ class AllocationConfig:
     min_cluster_freq: int = 50
     min_cluster_keys: int = 5
     low_freq_threshold: int = 20
+    forecast_error_margin: float = 0.3
+    informational_share_warn_threshold: float = 0.30
+    exclude_informational_phrases: bool = False
+    expected_conversion_rate: float | None = None
+    cr_benchmark_low: float = 0.02
+    cr_benchmark_high: float = 0.05
+    campaign_type: str = "search"
+    rsya_cpc_factor: float = 0.4
+    rsya_ctr_pct: float = 0.15
 
     @classmethod
     def from_settings(cls, settings: object) -> "AllocationConfig":
+        raw_cr = getattr(settings, "EXPECTED_CONVERSION_RATE", None)
         return cls(
             total_budget=float(getattr(settings, "MEDIA_PLAN_BUDGET", 120000)),
             weight_center=float(getattr(settings, "ALLOC_WEIGHT_CENTER", 1.0)),
@@ -122,6 +131,19 @@ class AllocationConfig:
             min_cluster_freq=int(getattr(settings, "ALLOC_MIN_CLUSTER_FREQ", 50)),
             min_cluster_keys=int(getattr(settings, "ALLOC_MIN_CLUSTER_KEYS", 5)),
             low_freq_threshold=int(getattr(settings, "ALLOC_LOW_FREQ_THRESHOLD", 20)),
+            forecast_error_margin=float(getattr(settings, "FORECAST_ERROR_MARGIN", 0.3)),
+            informational_share_warn_threshold=float(
+                getattr(settings, "INFORMATIONAL_SHARE_WARN_THRESHOLD", 0.30)
+            ),
+            exclude_informational_phrases=bool(
+                getattr(settings, "EXCLUDE_INFORMATIONAL_PHRASES", False)
+            ),
+            expected_conversion_rate=float(raw_cr) if raw_cr is not None else None,
+            cr_benchmark_low=float(getattr(settings, "CR_BENCHMARK_LOW", 0.02)),
+            cr_benchmark_high=float(getattr(settings, "CR_BENCHMARK_HIGH", 0.05)),
+            campaign_type=str(getattr(settings, "CAMPAIGN_TYPE", "search")),
+            rsya_cpc_factor=float(getattr(settings, "RSYA_CPC_FACTOR", 0.4)),
+            rsya_ctr_pct=float(getattr(settings, "RSYA_CTR_PCT", 0.15)),
         )
 
 
@@ -266,6 +288,41 @@ def cross_minus(
     return sorted(token for token in (child_tokens - parent_tokens) if token not in protected)
 
 
+def validate_minus_words(
+    minus_words: list[str], active_phrases: list[str]
+) -> tuple[list[str], list[str]]:
+    """Split minus words into (safe, needs_review): a minus word that is itself a
+    token of one of the given active phrases (e.g. a sibling cluster's keywords)
+    would silently cut off that phrase's traffic, so it must not be auto-applied."""
+    active_tokens: set[str] = set()
+    for phrase in active_phrases:
+        active_tokens.update(normalize_phrase(phrase).split())
+    clean: list[str] = []
+    needs_review: list[str] = []
+    for word in minus_words:
+        if word in active_tokens:
+            needs_review.append(word)
+        else:
+            clean.append(word)
+    return clean, needs_review
+
+
+def _readable_cluster_title(
+    basis_key: str, cluster_type: ClusterType, items: list[tuple[dict, "PhraseParts"]]
+) -> str:
+    if not basis_key.startswith("__nb_"):
+        return " ".join(tok.capitalize() for tok in basis_key.split())
+    counter: Counter[str] = Counter()
+    for kw, parts in items:
+        weight = int(kw.get("freq") or 0) or 1
+        for tok in set(parts.transactional) | set(parts.characteristic):
+            counter[tok] += weight
+    top_words = [w for w, _ in counter.most_common(2)]
+    if top_words:
+        return " ".join(w.capitalize() for w in top_words)
+    return "Общие фразы" if cluster_type == "general" else "Разное"
+
+
 def build_guardrails(clusters: list[ClusterResult], cfg: AllocationConfig) -> list[str]:
     warnings: list[str] = []
     broad_total = sum(c.allocated_share for c in clusters if c.type == "general")
@@ -339,7 +396,7 @@ def assign_clusters(
             results.append(
                 ClusterResult(
                     base=basis_key,
-                    title=f"{basis_key} / {cluster_type}",
+                    title=_readable_cluster_title(basis_key, cluster_type, items),
                     type=cluster_type,
                     cls=cls,
                     is_center_of_gravity=is_cog,
@@ -354,7 +411,7 @@ def assign_clusters(
         results.append(
             ClusterResult(
                 base="малопоказы",
-                title="малопоказы / general",
+                title="Низкочастотные фразы",
                 type="general",
                 cls="C4",
                 is_center_of_gravity=False,
@@ -368,6 +425,32 @@ def assign_clusters(
         )
 
     return results
+
+
+def _compute_intent_breakdown(forecast_rows: list[dict]) -> dict[str, dict]:
+    demand_by_category = {"commercial": 0.0, "informational": 0.0, "mixed": 0.0}
+    impressions_by_category = {"commercial": 0.0, "informational": 0.0, "mixed": 0.0}
+    for row in forecast_rows:
+        category = classify_intent_category(str(row.get("phrase") or ""))
+        demand_by_category[category] += _to_float(row.get("spending"))
+        impressions_by_category[category] += _to_float(row.get("impressions"))
+    total_demand = sum(demand_by_category.values())
+    return {
+        category: {
+            "demand_rub": round(demand, 2),
+            "share": round(demand / total_demand, 4) if total_demand > 0 else 0.0,
+            "impressions": round(impressions_by_category[category], 0),
+        }
+        for category, demand in demand_by_category.items()
+    }
+
+
+def is_statistically_significant(
+    clicks: int | float, impressions: int | float, threshold: int = 30
+) -> bool:
+    """A CTR/conversion rate computed from fewer than `threshold` clicks is noise,
+    not a stable estimate (e.g. 1 click of 2 impressions = "50% CTR")."""
+    return float(clicks or 0) >= threshold
 
 
 def adjusted_cpc(cls: PhraseClass, cpc: float, cfg: AllocationConfig) -> float:
@@ -499,8 +582,10 @@ def compute_budget_scenarios(
     rows: list[dict],
     clusters: list[ClusterResult],
     summary: dict | None = None,
+    forecast_error_margin: float = 0.3,
 ) -> tuple[list[dict], dict, dict]:
     summary = summary or {}
+    margin = max(0.0, float(forecast_error_margin or 0.0))
     clean = compute_clean_cpc(rows)
     clean_cpc = float(clean["value"] or 0.0)
     if not rows:
@@ -509,6 +594,8 @@ def compute_budget_scenarios(
                 "id": scenario_def["id"],
                 "title": scenario_def["title"],
                 "budget": 0.0,
+                "budget_low": 0.0,
+                "budget_high": 0.0,
                 "target_clicks": scenario_def.get("target_clicks"),
                 "clicks": 0.0,
                 "impressions": 0.0,
@@ -526,6 +613,7 @@ def compute_budget_scenarios(
             "clicks": 0.0,
             "impressions": 0.0,
             "source": "empty_forecast",
+            "forecast_error_margin": margin,
         }
     cluster_by_phrase = {
         str(p.get("phrase")): cluster
@@ -559,6 +647,7 @@ def compute_budget_scenarios(
         "clicks": int(round(sum(clicks_by_priority.values()))),
         "impressions": round(sum(impressions_by_priority.values()), 0),
         "source": "direct_common" if common_max > 0 else "phrase_sum",
+        "forecast_error_margin": margin,
     }
 
     scenarios: list[dict] = []
@@ -571,30 +660,121 @@ def compute_budget_scenarios(
             target_clicks = sum(clicks_by_priority.values())
         else:
             target_clicks = float(scenario_def["target_clicks"] or 0)
-            click_budget = target_clicks * clean_cpc if clean_cpc > 0 else 0.0
-            raw_budget = max(click_budget, float(scenario_def.get("min_budget") or 0.0))
+            raw_budget = target_clicks * clean_cpc if clean_cpc > 0 else 0.0
         if scenario_def["id"] == "full":
             budget = _round_budget(raw_budget)
         else:
+            # Scenarios are ordered by rising target_clicks, so budget should
+            # rise monotonically too; this only bites if clean_cpc is 0 for a
+            # scenario computed after a non-zero one, which shouldn't happen
+            # since clean_cpc is constant across scenarios in one call.
             budget = _round_budget(max(previous_budget, raw_budget))
             previous_budget = budget
         clicks = budget / clean_cpc if clean_cpc > 0 else 0.0
         impressions = _scenario_impressions(rows, clicks)
+        # pct_of_demand is NOT capped at 100%: a starter budget can legitimately
+        # exceed the collected phrase demand for a narrow priority scope, and
+        # silently clipping that to "100%" hides the discrepancy from the reader.
+        pct_of_demand = round(budget / full_budget * 100.0, 1) if full_budget > 0 else None
+        exceeds_demand = bool(full_budget > 0 and budget > full_budget + 1e-9)
+        exceeds_demand_ratio = round(budget / full_budget, 2) if full_budget > 0 else None
         scenarios.append(
             {
                 "id": scenario_def["id"],
                 "title": scenario_def["title"],
                 "budget": budget,
+                "budget_low": round(budget * (1 - margin), 2),
+                "budget_high": round(budget * (1 + margin), 2),
+                "starter_budget_rub": budget,
+                "demand_full_rub": round(full_budget, 2),
                 "target_clicks": int(round(target_clicks)) if target_clicks else None,
                 "clicks": int(round(clicks)),
                 "impressions": round(impressions, 0),
                 "avg_cpc": round(clean_cpc, 2),
                 "coverage": round(min(budget / full_budget, 1.0), 4) if full_budget > 0 else 0.0,
+                "pct_of_demand": pct_of_demand,
+                "exceeds_demand": exceeds_demand,
+                "exceeds_demand_ratio": exceeds_demand_ratio,
                 "scope_budget": round(scope_budget, 2),
                 "below_viable_scope": bool(scope_budget > 0 and budget > scope_budget),
             }
         )
     return scenarios, clean, full_demand
+
+
+def apply_lead_forecast(
+    scenarios: list[dict],
+    expected_conversion_rate: float | None,
+    cr_benchmark_low: float = 0.02,
+    cr_benchmark_high: float = 0.05,
+) -> list[dict]:
+    """Добавляет к каждому сценарию бюджета прогноз лидов и CPL: leads = clicks * CR,
+    CPL = budget / leads. Если CR сайта не задан пользователем, считает диапазон по
+    среднеотраслевым бенчмаркам и помечает cr_is_estimated=True, чтобы отчёт мог
+    показать точные цифры только при явно заданной конверсии."""
+    is_estimated = expected_conversion_rate is None
+    cr_low = cr_benchmark_low if is_estimated else expected_conversion_rate
+    cr_high = cr_benchmark_high if is_estimated else expected_conversion_rate
+
+    result: list[dict] = []
+    for scenario in scenarios:
+        clicks = float(scenario.get("clicks") or 0.0)
+        budget = float(scenario.get("budget") or 0.0)
+        leads_low = clicks * cr_low
+        leads_high = clicks * cr_high
+        cpl_low = budget / leads_high if leads_high > 0 else None
+        cpl_high = budget / leads_low if leads_low > 0 else None
+        enriched = dict(scenario)
+        enriched.update(
+            {
+                "leads_low": round(leads_low, 1),
+                "leads_high": round(leads_high, 1),
+                "cpl_low": round(cpl_low, 2) if cpl_low is not None else None,
+                "cpl_high": round(cpl_high, 2) if cpl_high is not None else None,
+                "cr_is_estimated": is_estimated,
+            }
+        )
+        if not is_estimated:
+            leads = clicks * expected_conversion_rate
+            cpl = budget / leads if leads > 0 else None
+            enriched["leads"] = round(leads, 1)
+            enriched["cpl"] = round(cpl, 2) if cpl is not None else None
+        result.append(enriched)
+    return result
+
+
+def apply_rsya_forecast(
+    scenarios: list[dict],
+    search_clean_cpc: float,
+    rsya_cpc_factor: float = 0.4,
+    rsya_ctr_pct: float = 0.15,
+) -> list[dict]:
+    """Для каждого сценария бюджета считает оценочный прогноз для РСЯ на том же
+    бюджете, через CPM и охват вместо CPC/кликов Поиска: РСЯ-CPC берётся как доля
+    от очищенного CPC Поиска (площадки РСЯ дешевле), а CPM выводится из CPC и
+    среднеотраслевого CTR РСЯ (CPM = CPC * CTR% * 10). Это оценка по бенчмаркам,
+    а не измеренные данные — Forecast API не отдаёт отдельный прогноз для РСЯ."""
+    rsya_cpc = float(search_clean_cpc or 0.0) * max(0.0, rsya_cpc_factor)
+    ctr = max(0.0, rsya_ctr_pct)
+    cpm = rsya_cpc * ctr * 10 if rsya_cpc > 0 else 0.0
+
+    result: list[dict] = []
+    for scenario in scenarios:
+        budget = float(scenario.get("budget") or 0.0)
+        clicks = budget / rsya_cpc if rsya_cpc > 0 else 0.0
+        reach = clicks / (ctr / 100.0) if ctr > 0 else 0.0
+        result.append(
+            {
+                "id": scenario.get("id"),
+                "title": scenario.get("title"),
+                "budget": budget,
+                "cpm": round(cpm, 2),
+                "cpc": round(rsya_cpc, 2),
+                "reach": int(round(reach)),
+                "clicks": int(round(clicks)),
+            }
+        )
+    return result
 
 
 def allocate_budget(
@@ -622,11 +802,26 @@ def allocate_budget(
     else:
         working_keywords = list(keywords)
 
+    if cfg.exclude_informational_phrases:
+        working_keywords = [
+            kw for kw in working_keywords
+            if classify_intent_category(str(kw.get("phrase") or "")) != "informational"
+        ]
+
+    intent_breakdown = _compute_intent_breakdown(forecast_rows)
+
     clusters = assign_clusters(working_keywords, niche_stems, geo_norm, cfg)
     scenarios, clean_cpc, full_demand = compute_budget_scenarios(
         forecast_rows,
         clusters,
         forecast_summary,
+        forecast_error_margin=cfg.forecast_error_margin,
+    )
+    scenarios = apply_lead_forecast(
+        scenarios,
+        cfg.expected_conversion_rate,
+        cfg.cr_benchmark_low,
+        cfg.cr_benchmark_high,
     )
     recommended = next((s for s in scenarios if s["id"] == "recommended"), None)
     effective_budget = float(recommended.get("budget") if recommended else 0.0)
@@ -655,14 +850,29 @@ def allocate_budget(
 
     allocate_shares(clusters, effective_cfg, forecast_index)
 
-    for cluster in clusters:
+    all_cluster_phrases = [[p["phrase"] for p in c.phrases] for c in clusters]
+    for idx, cluster in enumerate(clusters):
         if cluster.cls != "C4":
             child_parts = [
                 decompose_phrase(p["phrase"], niche_stems, geo_norm)
                 for p in cluster.phrases
             ]
             parent_parts = basis_c4.get(cluster.base, [])
-            cluster.minus_words = cross_minus(child_parts, parent_parts)
+            raw_minus_words = cross_minus(child_parts, parent_parts)
+            # Guard against minus words that would silently suppress a *sibling*
+            # cluster's own active phrases (e.g. minus "губ" while another
+            # cluster still targets "коррекция губ").
+            sibling_active_phrases = [
+                phrase
+                for j, phrases in enumerate(all_cluster_phrases)
+                if j != idx
+                for phrase in phrases
+            ]
+            clean_minus_words, review_minus_words = validate_minus_words(
+                raw_minus_words, sibling_active_phrases
+            )
+            cluster.minus_words = clean_minus_words
+            cluster.minus_words_review = review_minus_words
 
     warnings = build_guardrails(clusters, effective_cfg)
     if len(keywords) > FORECAST_KEYWORD_LIMIT:
@@ -676,6 +886,21 @@ def allocate_budget(
         warnings.append(
             "Прогнозная выборка ниже минимального жизнеспособного месячного запуска; "
             "стартовые сценарии рассчитаны по нижней границе бюджета, а не по сумме строк прогноза."
+        )
+    if recommended and (recommended.get("exceeds_demand_ratio") or 0) >= 3:
+        warnings.append(
+            "Бюджет установлен на минимально жизнеспособном уровне для статистической "
+            "значимости показов, а не выведен из объёма собранного спроса по фразам. "
+            "Фактический спрос по текущему ядру ниже этого порога "
+            f"(в {recommended['exceeds_demand_ratio']:.1f}× раза)."
+        )
+    informational_share = intent_breakdown.get("informational", {}).get("share", 0.0)
+    if informational_share > cfg.informational_share_warn_threshold:
+        warnings.append(
+            f"Доля информационных запросов (симптомы/диагностика/самолечение) в ядре — "
+            f"{informational_share:.0%}, что превышает порог "
+            f"{cfg.informational_share_warn_threshold:.0%}. Часть трафика может быть "
+            "нецелевой для конверсионной кампании."
         )
 
     all_phrases = []
@@ -698,6 +923,10 @@ def allocate_budget(
                     "cluster": cluster.title,
                     "priority": priority,
                     "is_center_of_gravity": cluster.is_center_of_gravity,
+                    "ctr_significant": is_statistically_significant(
+                        forecast_clicks, forecast_impressions
+                    ),
+                    "intent_category": classify_intent_category(str(p.get("phrase") or "")),
                 }
             )
     priority_order = {"high": 0, "medium": 1, "low": 2}
@@ -718,10 +947,23 @@ def allocate_budget(
         round(total_clicks / total_impressions * 100.0, 2) if total_impressions > 0 else 0.0
     )
 
+    rsya_forecast: list[dict] = []
+    if cfg.campaign_type in ("rsya", "both"):
+        rsya_forecast = apply_rsya_forecast(
+            scenarios,
+            float(clean_cpc.get("value") or 0.0),
+            cfg.rsya_cpc_factor,
+            cfg.rsya_ctr_pct,
+        )
+
     return {
         "methodology_version": METHODOLOGY_VERSION,
         "total_budget": effective_budget,
         "recommended_budget": effective_budget,
+        "campaign_type": cfg.campaign_type,
+        "rsya_forecast": rsya_forecast,
+        "forecast_error_margin": cfg.forecast_error_margin,
+        "intent_breakdown": intent_breakdown,
         "budget_scenarios": scenarios,
         "clean_cpc": clean_cpc,
         "full_demand": full_demand,
@@ -741,6 +983,7 @@ def allocate_budget(
                 "allocated_share": round(c.allocated_share, 4),
                 "allocated_budget": round(c.allocated_budget, 2),
                 "minus_words": c.minus_words,
+                "minus_words_review": c.minus_words_review,
                 "phrases": [
                     {"phrase": p.get("phrase", ""), "freq": p.get("freq", 0)}
                     for p in c.phrases

@@ -103,6 +103,7 @@
   {% set full_demand = aggregates.get("full_demand", {}) %}
   {% set clean_cpc = aggregates.get("clean_cpc", {}) %}
   {% set clusters = aggregates.get("clusters", []) %}
+  {% set regulated_category = aggregates.get("regulated_category") %}
   {% set recommended = scenarios | selectattr("id", "equalto", "recommended") | list | first %}
   {% set cautious = scenarios | selectattr("id", "equalto", "cautious") | list | first %}
   {% set confident = scenarios | selectattr("id", "equalto", "confident") | list | first %}
@@ -127,6 +128,17 @@
       <div><div class="ms-h6">Дата отчёта</div><div class="meta-value">{{ generated_at }}</div></div>
       <div><div class="ms-h6">Ключевых фраз</div><div class="meta-value number">{{ aggregates.get("n_keywords", 0) | int | format_number }}</div></div>
       <div><div class="ms-h6">Подготовил</div><div class="meta-value">Ахсар Рыжов</div></div>
+    </div>
+    <div class="meta-row">
+      <div><div class="ms-h6">Период данных</div><div class="meta-value">{{ aggregates.get("forecast_period", "не указан") }}</div></div>
+      <div><div class="ms-h6">Сезонность</div><div class="meta-value">{{ aggregates.get("seasonality_note", "сезонность не учтена в данном прогнозе") }}</div></div>
+      <div><div class="ms-h6">Тип кампании</div><div class="meta-value">
+        {%- set ctype = aggregates.get("campaign_type", "search") -%}
+        {%- if ctype == "both" -%}Поиск + РСЯ
+        {%- elif ctype == "rsya" -%}РСЯ
+        {%- else -%}Поиск
+        {%- endif -%}
+      </div></div>
     </div>
 
     <section class="avoid-break">
@@ -153,30 +165,107 @@
             {% if item.get('id') == 'recommended' %}<span class="tag tag-accent" style="margin-bottom:8px;">Рекомендуем</span>{% endif %}
             <div class="scenario-title">{{ item.get("title", "") }}</div>
             <div class="scenario-budget ms-stat-num">{{ item.get("budget", 0) | format_number }}&nbsp;₽</div>
-            <p class="scenario-note">{{ item.get("clicks", 0) | int | format_number }} кликов · {{ ((item.get("coverage", 0) | float) * 100) | round | int }}% спроса</p>
+            {% if item.get("budget_low") is not none and item.get("budget_high") is not none %}
+              <p class="scenario-note">диапазон {{ item.get("budget_low", 0) | format_number }}–{{ item.get("budget_high", 0) | format_number }}&nbsp;₽</p>
+            {% endif %}
+            {% if item.get("exceeds_demand") %}
+              <p class="scenario-note">{{ item.get("clicks", 0) | int | format_number }} кликов · бюджет выше собранного спроса в {{ "%.1f"|format(item.get("exceeds_demand_ratio", 0) | float) }}×</p>
+            {% elif item.get("pct_of_demand") is not none %}
+              <p class="scenario-note">{{ item.get("clicks", 0) | int | format_number }} кликов · {{ item.get("pct_of_demand", 0) | round | int }}% от полного спроса</p>
+            {% else %}
+              <p class="scenario-note">{{ item.get("clicks", 0) | int | format_number }} кликов</p>
+            {% endif %}
           </div>
         {% endfor %}
       </div>
-      <p class="muted-note">Полный спрос по очищенным фразам: {{ full_demand.get("budget_max", 0) | format_number }}&nbsp;₽{% if full %}; сценарий полного спроса: {{ full.get("clicks", 0) | int | format_number }} кликов{% endif %}. CPC в сценариях — прогноз Direct, очищенный по медиане/винзоризации, не фактический CPC аккаунта после оптимизации.</p>
+      <p class="muted-note">Полный спрос по очищенным фразам: {{ full_demand.get("budget_max", 0) | format_number }}&nbsp;₽{% if full %}; сценарий полного спроса: {{ full.get("clicks", 0) | int | format_number }} кликов{% endif %}. CPC в сценариях — прогноз Direct, очищенный по медиане/винзоризации, не фактический CPC аккаунта после оптимизации. Стартовый бюджет рассчитан по минимально жизнеспособному числу кликов и может превышать собранный спрос по ядру — это не одно и то же.</p>
     </section>
+
+    {% set cr_is_estimated = aggregates.get("cr_is_estimated", true) %}
+    <section class="avoid-break">
+      <p class="ms-h6">Прогноз заявок и стоимость лида</p>
+      <h2>Заявки и CPL по сценариям</h2>
+      <table class="table">
+        <thead><tr><th>Сценарий</th><th>Бюджет</th><th>Клики</th><th>Заявки{% if cr_is_estimated %} (оценочно)*{% endif %}</th><th>CPL{% if cr_is_estimated %} (оценочно)*{% endif %}</th></tr></thead>
+        <tbody>
+          {% for item in [cautious, recommended, confident, full] if item %}
+            <tr>
+              <td>{{ item.get("title", "") }}</td>
+              <td>{{ money(item.get("budget", 0)) }}</td>
+              <td>{{ num(item.get("clicks", 0)) }}</td>
+              {% if cr_is_estimated %}
+                <td>{{ item.get("leads_low", 0) | format_number }}–{{ item.get("leads_high", 0) | format_number }}</td>
+                <td>{% if item.get("cpl_low") is not none and item.get("cpl_high") is not none %}{{ money(item.get("cpl_low", 0)) }}–{{ money(item.get("cpl_high", 0)) }}{% else %}—{% endif %}</td>
+              {% else %}
+                <td>{{ item.get("leads", 0) | format_number }}</td>
+                <td>{% if item.get("cpl") is not none %}{{ money(item.get("cpl", 0)) }}{% else %}—{% endif %}</td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if cr_is_estimated %}
+        <p class="muted-note">* Конверсия сайта не задана — заявки и CPL рассчитаны по среднеотраслевым бенчмаркам CR {{ (aggregates.get("cr_benchmark_low", 0.02) * 100) | round(1) }}–{{ (aggregates.get("cr_benchmark_high", 0.05) * 100) | round(1) }}%. Оценочно, для точного расчёта укажите конверсию сайта.</p>
+      {% else %}
+        <p class="muted-note">Заявки и CPL рассчитаны по заданной конверсии сайта {{ (aggregates.get("expected_conversion_rate", 0) * 100) | round(1) }}%: заявки = клики × CR, CPL = бюджет / заявки.</p>
+      {% endif %}
+    </section>
+
+    {% set rsya_forecast = aggregates.get("rsya_forecast", []) %}
+    {% if rsya_forecast %}
+      <section class="avoid-break">
+        <p class="ms-h6">Прогноз для РСЯ</p>
+        <h2>Охват и CPM в сетях</h2>
+        <table class="table">
+          <thead><tr><th>Сценарий</th><th>Бюджет</th><th>CPM</th><th>Охват (показы)</th><th>Клики (оценочно)</th></tr></thead>
+          <tbody>
+            {% for item in rsya_forecast %}
+              <tr>
+                <td>{{ item.get("title", "") }}</td>
+                <td>{{ money(item.get("budget", 0)) }}</td>
+                <td>{{ money(item.get("cpm", 0)) }}</td>
+                <td>{{ num(item.get("reach", 0)) }}</td>
+                <td>{{ num(item.get("clicks", 0)) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <p class="muted-note">Показатели РСЯ рассчитаны отдельно от Поиска: Forecast API не отдаёт прогноз для сетей напрямую, поэтому CPC РСЯ оценён как доля от очищенного CPC Поиска, а CPM выведен из CPC и среднеотраслевого CTR РСЯ. Это оценка по бенчмаркам, не измеренные данные — метрики Поиска и РСЯ не суммируются.</p>
+      </section>
+    {% endif %}
+
+    {% set intent_breakdown = aggregates.get("intent_breakdown", {}) %}
+    {% if intent_breakdown %}
+      <section class="avoid-break">
+        <p class="ms-h6">Классификация по интенту</p>
+        <h2>Коммерческие vs информационные запросы</h2>
+        <div class="stats">
+          <div class="stat"><div class="num ms-stat-num">{{ ((intent_breakdown.get("commercial", {}).get("share", 0)) * 100) | round | int }}%</div><div class="caption">коммерческие</div></div>
+          <div class="stat"><div class="num ms-stat-num">{{ ((intent_breakdown.get("informational", {}).get("share", 0)) * 100) | round | int }}%</div><div class="caption">информационные</div></div>
+          <div class="stat"><div class="num ms-stat-num">{{ ((intent_breakdown.get("mixed", {}).get("share", 0)) * 100) | round | int }}%</div><div class="caption">смешанные / неопределённые</div></div>
+        </div>
+        <p class="muted-note">Информационные запросы (симптомы, диагностика, самолечение) реже конвертируются в заявку, чем коммерческие («цена», «записаться», «клиника»).</p>
+      </section>
+    {% endif %}
 
     <section>
       <p class="ms-h6">Прогноз по фразам</p>
       <h2>Топ-10 фраз по прогнозному спросу</h2>
       <table class="table">
-        <thead><tr><th>Фраза</th><th>Показы</th><th>Клики</th><th>CTR</th><th>CPC</th><th>Приоритет</th></tr></thead>
+        <thead><tr><th>Фраза</th><th>Показы</th><th>Клики</th><th>CTR</th><th>CPC</th><th>Приоритет</th><th>Интент</th></tr></thead>
         <tbody>
           {% for item in top_keywords[:10] %}
             <tr>
               <td>{{ item.get("phrase", "") }}{% if item.get("is_center_of_gravity") %} <span class="tag tag-accent" style="margin-left:6px;">Центр тяжести</span>{% endif %}</td>
               <td>{{ num(item.get("impressions", 0)) }}</td>
               <td>{{ num(item.get("clicks", 0)) }}</td>
-              <td>{{ num(item.get("ctr", 0)) }}%</td>
+              <td>{% if item.get("ctr_significant") %}{{ num(item.get("ctr", 0)) }}%{% else %}<span class="tag tag-outline" title="менее 30 кликов — показатель ненадёжен">недостаточно данных</span>{% endif %}</td>
               <td>{{ money(item.get("cpc", 0)) }}</td>
               <td><span class="tag tag-accent-soft">{{ priority_label(item.get("priority", "")) }}</span></td>
+              <td>{% if item.get("intent_category") == "informational" %}<span class="tag tag-outline">информационный</span>{% elif item.get("intent_category") == "commercial" %}<span class="tag tag-accent-2">коммерческий</span>{% else %}<span class="tag tag-neutral">смешанный</span>{% endif %}</td>
             </tr>
           {% else %}
-            <tr><td colspan="6">Нет данных для таблицы прогноза.</td></tr>
+            <tr><td colspan="7">Нет данных для таблицы прогноза.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -213,7 +302,7 @@
               <td>{{ cluster.get("n_keys", 0) }}</td>
               <td>{{ money(cluster.get("allocated_budget", 0)) }}</td>
               <td>{{ (cluster.get("allocated_share", 0) * 100) | round | int }}%</td>
-              <td><div class="chips">{% for word in cluster.get("minus_words", [])[:5] %}<span class="tag tag-outline">{{ word }}</span>{% endfor %}</div></td>
+              <td><div class="chips">{% for word in cluster.get("minus_words", [])[:5] %}<span class="tag tag-outline">{{ word }}</span>{% endfor %}{% for word in cluster.get("minus_words_review", [])[:5] %}<span class="tag tag-accent-2" title="конфликтует с активной фразой этого кластера — требует ручной проверки">{{ word }} ?</span>{% endfor %}</div></td>
             </tr>
           {% else %}
             <tr><td colspan="7">Нет данных о кластерах.</td></tr>
@@ -247,6 +336,43 @@
       <ol>{% for recommendation in report.get("recommendations", []) %}<li>{{ recommendation }}</li>{% endfor %}</ol>
     </section>
 
+    {% if regulated_category %}
+      <section class="avoid-break">
+        <p class="ms-h6" style="color:var(--color-accent-2-700);">Юридические и модерационные требования</p>
+        <p class="warning" style="margin-bottom:14px;">
+          Тематика «{{ niche }}» относится к регулируемой категории «{{ regulated_category.get("label", "") }}».
+          Модерация Яндекс Директа предъявляет к таким кампаниям дополнительные требования — блок сформирован
+          автоматически по справочнику регулируемых категорий, без ручного ввода оператора.
+        </p>
+        <div style="display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:20px; max-width:660px;">
+          <div>
+            <p class="ms-h6" style="margin-bottom:8px;">Необходимые документы</p>
+            <ul style="margin:0; padding-left:18px; font-size:13px;">
+              {% for doc in regulated_category.get("required_documents", []) %}<li style="margin-bottom:6px;">{{ doc }}</li>{% endfor %}
+            </ul>
+          </div>
+          <div>
+            <p class="ms-h6" style="margin-bottom:8px;">Запрещённые формулировки</p>
+            <ul style="margin:0; padding-left:18px; font-size:13px;">
+              {% for phrase in regulated_category.get("forbidden_phrases", []) %}<li style="margin-bottom:6px;">{{ phrase }}</li>{% endfor %}
+            </ul>
+          </div>
+          <div>
+            <p class="ms-h6" style="margin-bottom:8px;">Обязательные дисклеймеры</p>
+            <ul style="margin:0; padding-left:18px; font-size:13px;">
+              {% for disc in regulated_category.get("mandatory_disclaimers", []) %}<li style="margin-bottom:6px;">{{ disc }}</li>{% endfor %}
+            </ul>
+          </div>
+          <div>
+            <p class="ms-h6" style="margin-bottom:8px;">Ограничения по таргетингу и площадкам</p>
+            <ul style="margin:0; padding-left:18px; font-size:13px;">
+              {% for restriction in regulated_category.get("targeting_restrictions", []) %}<li style="margin-bottom:6px;">{{ restriction }}</li>{% endfor %}
+            </ul>
+          </div>
+        </div>
+      </section>
+    {% endif %}
+
     {% if aggregates.get("warnings") %}
       <section class="avoid-break">
         <p class="ms-h6" style="color:var(--color-accent-2-700);">Внимание</p>
@@ -257,6 +383,7 @@
     <section class="avoid-break">
       <p class="ms-h6">Ограничения прогноза</p>
       <p style="font-style:italic; font-size:13px; opacity:0.72; max-width:660px;">{{ report.get("disclaimer", "") }}</p>
+      <p class="muted-note">Погрешность прогноза Wordstat/Direct: ±{{ (full_demand.get("forecast_error_margin", 0.3) * 100) | round | int }}%. Диапазоны бюджета в блоке «С чего начать» уже учитывают эту погрешность.</p>
     </section>
 
     <div class="running-footer"><span>{{ region }}</span><span>{{ generated_at }}</span></div>

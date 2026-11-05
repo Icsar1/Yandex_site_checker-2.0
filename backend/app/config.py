@@ -84,6 +84,18 @@ class Settings(BaseSettings):
     ALLOC_MIN_CLUSTER_FREQ: int = 50
     ALLOC_MIN_CLUSTER_KEYS: int = 5
     ALLOC_LOW_FREQ_THRESHOLD: int = 20
+    FORECAST_ERROR_MARGIN: float = 0.3
+    CTR_SIGNIFICANCE_MIN_CLICKS: int = 30
+    INFORMATIONAL_SHARE_WARN_THRESHOLD: float = 0.30
+    EXCLUDE_INFORMATIONAL_PHRASES: bool = False
+    EXPECTED_CONVERSION_RATE: float | None = None
+    CR_BENCHMARK_LOW: float = 0.02
+    CR_BENCHMARK_HIGH: float = 0.05
+    CAMPAIGN_TYPE: str = "search"
+    RSYA_CPC_FACTOR: float = 0.4
+    RSYA_CTR_PCT: float = 0.15
+    FORECAST_PERIOD_LABEL: str = "последние ~60 дней (данные Яндекс Wordstat/Forecast API)"
+    SEASONALITY_NOTE: str = "сезонность не учтена в данном прогнозе"
 
 
 def get_settings() -> Settings:

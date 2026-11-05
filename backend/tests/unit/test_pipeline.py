@@ -289,7 +289,7 @@ async def test_collect_keywords_multi_mask(
         return [{"phrase": f"{query} price", "freq": 100}]
 
     def select_all(raw_keywords: list[dict], **kwargs: object) -> list[dict]:
-        assert kwargs["niche"] == "alpha beta"
+        assert kwargs["niche"] == "alpha beta service"
         return list(raw_keywords)
 
     monkeypatch.setattr(pipeline.MockWordstatClient, "top_requests", top_requests)
@@ -303,10 +303,11 @@ async def test_collect_keywords_multi_mask(
         search_masks=["alpha", "beta"],
     )
 
-    assert calls == [("alpha", [213]), ("beta", [213])]
+    assert calls == [("alpha", [213]), ("beta", [213]), ("service", [213])]
     assert keywords == [
         {"phrase": "alpha price", "freq": 100},
         {"phrase": "beta price", "freq": 100},
+        {"phrase": "service price", "freq": 100},
     ]
 
 
